@@ -144,15 +144,19 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 	mean = scores.mean(axis='columns')
 	median = scores.median(axis='columns')
 	stdev = scores.std(axis='columns')
-	
+	count_below_mean = scores[scores.lt(mean, axis='index')].count(axis='columns')
+	percent_below_mean = count_below_mean / count
+	count_below_median = scores[scores.lt(median, axis='index')].count(axis='columns')
+	percent_below_median = count_below_median / count
+
 	median_tournament = scores.where(scores.isin(median)).apply(pandas.Series.first_valid_index, axis='columns')
 	sem = scores.sem(axis='columns', skipna=True)
 	kurt = scores.kurt(axis='columns', skipna=True)
 	skew = scores.skew(axis='columns', skipna=True)
 	raw_zscores = scipy.stats.zscore(scores.astype(float), nan_policy='omit') #Need nan instead of NAType
 	zscores = pandas.DataFrame(abs(raw_zscores), index=scores.index, columns=scores.columns)
-	most_outlier = zscores.idxmax(axis=1)
-	most_inlier = zscores.idxmin(axis=1)
+	most_outlier = zscores.idxmax(axis=1, skipna=True)
+	most_inlier = zscores.idxmin(axis=1, skipna=True)
 	
 	if count.min() == 1:
 		#Whoopsie no stats involving sem for you
@@ -188,6 +192,10 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		'Top 8 %': top_8_percent,
 		
 		#Some less used stats down here
+		'# below mean': count_below_mean,
+		'% below mean': percent_below_mean,
+		'# below median': count_below_median,
+		'% below median': percent_below_median,
 		'Median': median_tournament,
 		'Most inlier': most_inlier,
 		'Most outlier': most_outlier,
