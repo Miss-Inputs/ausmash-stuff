@@ -41,10 +41,6 @@ def get_redemption_bracket_results(player: Player, game: Game | str, season_star
 	#Exclude pro bracket results as we will get the pools result for the whole tournament
 	return [r for r in results if r.event.game == game and r.event.is_redemption_bracket and r.total_entrants >= event_size_to_count and r.tournament.series.name not in series_to_exclude]
 
-def get_score(result: Result) -> int:
-	"""Returns a normalized score for this round, based on how many rounds this was away from LR1"""
-	return rounds_from_victory(result.total_entrants) - rounds_from_victory(result.real_placing)
-
 def _get_rows(players: Iterable[Player], game: Game | str, season_start: date | None=None, season_end: date | None=None, event_size_to_count: int = 1, excluded_series: Iterable[str] | None=None, redemption: bool=False) -> dict[Player, dict[tuple[Tournament, str], int]]:
 	rows: dict[Player, dict[tuple[Tournament, str], int]] = {}
 	for player in players:
@@ -181,7 +177,6 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		'Skew': skew,
 	}
 	
-
 	df = pandas.DataFrame(cols)
 
 	if confidence_percent:
@@ -282,7 +277,6 @@ def main():
 	argparser.add_argument('--game', type=Game.from_name, help='Name or acronym of game to generate ranking for, by default, SSBU', default=Game('SSBU'), choices=game_choices, metavar=str({g.short_name for g in game_choices}))
 	region_choices = Region.all()
 	argparser.add_argument('--region', type=Region.from_name, help='Name or acronym of region to generate ranking for, or if not specified, generate ranking for every player on Ausmash', default=None, choices=region_choices, metavar='<region>')
-
 	argparser.add_argument('--season-start', type=date.fromisoformat, help='Start date for this ranking season, in ISO format, or consider all tournaments if not specified', metavar='YYYY-MM-DD', default=None)
 	argparser.add_argument('--season-end', type=date.fromisoformat, help='End date for this season, in ISO format, or today if not specified', metavar='YYYY-MM-DD', default=None)
 	argparser.add_argument('--minimum-events-to-count', type=int, help='Players must have attended this amount of tournaments (that are counted for the ranking, see --event-size-to-count) in this season to be eligible for the rankings. 3 by default', default=3)
