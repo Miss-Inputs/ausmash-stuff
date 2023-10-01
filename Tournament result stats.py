@@ -163,6 +163,7 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		z = scipy.stats.norm.ppf(1 - (1 - confidence_percent) / 2) #Should be ~= 1.9599 for 95%
 		interval_high = mean + (z * sem)
 		interval_low = mean - (z * sem)
+		interval_low.loc[interval_low < 0] = 0
 	
 	wins = (placings.map(lambda f: f[0], na_action='ignore') <= 1).sum(axis='columns')
 	top_3s = (placings.map(lambda f: f[0], na_action='ignore') <= 3).sum(axis='columns')
