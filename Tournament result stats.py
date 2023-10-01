@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas
 import scipy.stats
 from sklearn.cluster import KMeans
+from sklearn.metrics import calinski_harabasz_score
 
 from ausmash import (Game, Match, Player, Region, Result, Tournament,
                      get_active_players, rounds_from_victory)
@@ -72,17 +73,33 @@ def _get_rows(players: Iterable[Player], game: Game | str, season_start: date | 
 		rows[player] = data
 	return rows
 
-def cluster_into_tiers(mean_scores: pandas.Series):
+def cluster_into_tiers(mean_scores: pandas.Series) -> pandas.Series | None:
 	"""Uses K-means clustering to assign a tier to every row in mean_scores (which could also be another column instead), though assumes the rest of the frame is sorted that way"""
-	tier_letters = list('SABCDEF')
-	kmeans = KMeans(n_init='auto', n_clusters=len(tier_letters))
+	tier_letters = list('SABCDEFGHIJKLZ')
+	# kmeans = KMeans(n_init='auto', n_clusters=len(tier_letters))
+	best_k_means = None
+	best_score = -1
+	best_labels = None
+	for n in range(3, min(len(tier_letters), mean_scores.size // 3)):		
+		X = mean_scores.values.reshape(-1, 1)
+		kmeans = KMeans(n_init='auto', n_clusters=n)
+		result = kmeans.fit_predict(X)
+		score = calinski_harabasz_score(X, kmeans.labels_)
+		if score > best_score:
+			best_score = score
+			best_k_means = kmeans
+			best_labels = result
+	if not best_k_means:
+		logger.warning('Could not find any value of n_clusters that works, no tiers for you')
+		return None
+
 	#This will produce a warning if number of players is less than the number of tiers, which can end up happening for majors only, for instance
-	raw_tiers = pandas.Series(kmeans.fit_predict(mean_scores.values.reshape(-1, 1)), index=mean_scores.index)
+	raw_tiers = pandas.Series(best_labels, index=mean_scores.index)
 	#The numbers in raw_tiers are just random values for the sake of being distinct, we are already sorted by mean score, so have ascending tiers instead
 	mapping = {c: i for i, c in enumerate(raw_tiers.unique())}
 	tiers = raw_tiers.map(mapping)
 	#Could use this to determine how far away each tier is from another, to determine whether the first tier is S+ or S, the next one is A+ or A, etc
-	cluster_centres = pandas.Series(kmeans.cluster_centers_.squeeze()).rename(mapping).sort_index()
+	cluster_centres = pandas.Series(best_k_means.cluster_centers_.squeeze()).rename(mapping).sort_index()
 	cluster_diffs = cluster_centres.diff(-1)
 	# logger.info('Tier cluster centres: %s', cluster_centres)
 	# logger.info('Tier cluster centres diff: %s', cluster_diffs)
@@ -90,7 +107,8 @@ def cluster_into_tiers(mean_scores: pandas.Series):
 	next_letter_index = 0
 	tier_names = {}
 	used_plus = False
-	plus_threshold = cluster_diffs.mean(skipna=True)
+	# plus_threshold = cluster_diffs.mean(skipna=True)
+	plus_threshold = mean_scores.max() / cluster_diffs.size
 	for i, diff in enumerate(cluster_diffs.head(-1)):
 		#TODO: Should have minus letters I guess, but I got too confuzzled
 		letter = tier_letters[next_letter_index]
@@ -109,7 +127,7 @@ def cluster_into_tiers(mean_scores: pandas.Series):
 			used_plus = False
 		tier_names[i] = letter
 	#Hrm this doesn't really work in the case where number of players < number of tier letters, maybe should be checking length of cluster_centres instead
-	tier_names[len(tier_letters) - 1] = tier_letters[next_letter_index]
+	tier_names[cluster_diffs.size - 1] = tier_letters[next_letter_index]
 	# logger.info(tier_names)
 	return tiers.map({i: tier_names[i] for i in tiers.unique()})
 
@@ -193,15 +211,21 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		sort_column = f'{confidence_percent:.0%} confidence interval low'
 	elif confidence_percent and sort_column == 'high':
 		sort_column = f'{confidence_percent:.0%} confidence interval high'
+
+	df.insert(0, sort_column, df.pop(sort_column))
 		
 	df.insert(0, 'Rank', df[sort_column].rank(ascending=False, method='min').astype(int))
 	df.sort_values(sort_column, ascending=False, inplace=True)
+	
+	diff = df[sort_column].diff(-1)
+	df.insert(2, 'Difference to next', diff)
 
 	if df[sort_column].hasnans:
 		logger.warning('Refusing to add tiers, as there are nans in %s', sort_column)
 	else:
 		tiers = cluster_into_tiers(df[sort_column])
-		df.insert(1, 'Tier', tiers)
+		if tiers is not None:
+			df.insert(2, 'Tier', tiers)
 
 	return df.dropna(axis='columns', how='all')
 
