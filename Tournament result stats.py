@@ -154,7 +154,7 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 	most_outlier = zscores.idxmax(axis=1)
 	most_inlier = zscores.idxmin(axis=1)
 	
-	if len(scores.columns) < 2:
+	if count.min() == 1:
 		#Whoopsie no stats involving sem for you
 		confidence_percent = 0
 		if sort_column in {'low', 'high'}:
