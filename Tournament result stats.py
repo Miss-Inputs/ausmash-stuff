@@ -80,8 +80,8 @@ def cluster_into_tiers(mean_scores: pandas.Series) -> pandas.Series | None:
 	best_k_means = None
 	best_score = -1
 	best_labels = None
+	X = mean_scores.values.reshape(-1, 1)
 	for n in range(3, min(len(tier_letters), mean_scores.size // 3)):		
-		X = mean_scores.values.reshape(-1, 1)
 		kmeans = KMeans(n_init='auto', n_clusters=n)
 		result = kmeans.fit_predict(X)
 		score = calinski_harabasz_score(X, kmeans.labels_)
