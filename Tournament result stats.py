@@ -149,12 +149,9 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 	count_below_median = scores[scores.lt(median, axis='index')].count(axis='columns')
 	portion_below_median = count_below_median / count
 
-	median_tournament = scores.where(scores.isin(median)).apply(pandas.Series.first_valid_index, axis='columns')
 	sem = scores.sem(axis='columns', skipna=True)
 	raw_zscores = scipy.stats.zscore(scores.astype(float), nan_policy='omit') #Need nan instead of NAType
-	zscores = pandas.DataFrame(abs(raw_zscores), index=scores.index, columns=scores.columns)
-	most_outlier = zscores.idxmax(axis=1, skipna=True)
-	most_inlier = zscores.idxmin(axis=1, skipna=True)
+	zscores = pandas.DataFrame(raw_zscores, index=scores.index, columns=scores.columns)
 	maxes = scores.max(axis='columns', skipna=True)
 	mins = scores.min(axis='columns', skipna=True)
 	midpoint = (maxes + mins) / 2
@@ -204,15 +201,18 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		'Last place %': last_place_portion,
 		
 		#Some less used stats down here
-		'Median': median_tournament,
+		'Median': scores.where(scores.isin(median)).apply(pandas.Series.first_valid_index, axis='columns'),
+		'Midpoint tournament': scores.where(scores.isin(midpoint)).apply(pandas.Series.first_valid_index, axis='columns'),
 		'# below mean': count_below_mean,
-		'% below mean': portion_below_mean,
 		'# below median': count_below_median,
-		'% below median': portion_below_median,
 		'# below midpoint': count_below_midpoint,
+		'% below mean': portion_below_mean,
+		'% below median': portion_below_median,
 		'% below midpoint': portion_below_midpoint,
-		'Most inlier': most_inlier,
-		'Most outlier': most_outlier,
+		'Most inlier': abs(zscores).idxmin(axis=1, skipna=True),
+		'Most outlier': abs(zscores).idxmax(axis=1, skipna=True),
+		'Standout performance': zscores.idxmax(axis=1, skipna=True), #Usually the same as best tournament
+		'Low outlier': zscores.idxmin(axis=1, skipna=True), #Usually the same as worst?
 		'Standard error of mean': sem,
 		'Kurtosis': scores.kurt(axis='columns', skipna=True),
 		'Skew': scores.skew(axis='columns', skipna=True),
