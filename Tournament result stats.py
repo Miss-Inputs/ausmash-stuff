@@ -227,7 +227,7 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		'Harmonic mean': scipy.stats.hmean(scores.astype(float), axis=1, nan_policy='omit'),
 		'Harmonic mean of +1': scipy.stats.hmean(scores.astype(float) + 1, axis=1, nan_policy='omit') - 1,
 		'10% trimmed mean': scores.apply(trimmean_nan, proportion=0.1, axis='columns'),
-		'Coefficient of variation': mean / stdev,
+		'Coefficient of variation': stdev / mean,
 	}
 	
 	df = pandas.DataFrame(cols)
