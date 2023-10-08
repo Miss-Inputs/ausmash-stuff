@@ -180,7 +180,7 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 	wins = (placings.map(lambda f: f[0], na_action='ignore') <= 1).sum(axis='columns')
 	top_3s = (placings.map(lambda f: f[0], na_action='ignore') <= 3).sum(axis='columns')
 	top_8s = (placings.map(lambda f: f[0], na_action='ignore') <= 8).sum(axis='columns')
-	last_places = (placings.map(lambda f: f[0], na_action='ignore') == 0).sum(axis='columns')
+	last_places = (scores == 0).sum(axis='columns')
 	win_portion = wins / count
 	top_3_portion = top_3s / count
 	top_8_portion = top_8s / count
