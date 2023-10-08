@@ -145,18 +145,26 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 	median = scores.median(axis='columns')
 	stdev = scores.std(axis='columns')
 	count_below_mean = scores[scores.lt(mean, axis='index')].count(axis='columns')
-	percent_below_mean = count_below_mean / count
+	portion_below_mean = count_below_mean / count
 	count_below_median = scores[scores.lt(median, axis='index')].count(axis='columns')
-	percent_below_median = count_below_median / count
+	portion_below_median = count_below_median / count
 
 	median_tournament = scores.where(scores.isin(median)).apply(pandas.Series.first_valid_index, axis='columns')
 	sem = scores.sem(axis='columns', skipna=True)
-	kurt = scores.kurt(axis='columns', skipna=True)
-	skew = scores.skew(axis='columns', skipna=True)
 	raw_zscores = scipy.stats.zscore(scores.astype(float), nan_policy='omit') #Need nan instead of NAType
 	zscores = pandas.DataFrame(abs(raw_zscores), index=scores.index, columns=scores.columns)
 	most_outlier = zscores.idxmax(axis=1, skipna=True)
 	most_inlier = zscores.idxmin(axis=1, skipna=True)
+	maxes = scores.max(axis='columns', skipna=True)
+	mins = scores.min(axis='columns', skipna=True)
+	midpoint = (maxes + mins) / 2
+	count_below_midpoint = scores[scores.lt(midpoint, axis='index')].count(axis='columns')
+	portion_below_midpoint = count_below_midpoint / count
+
+	def expectile_nan(s: pandas.Series, alpha: float) -> float:
+		return scipy.stats.expectile(s.dropna(), alpha=alpha)
+	def trimmean_nan(s: pandas.Series, proportion: float) -> float:
+		return scipy.stats.trim_mean(s.dropna(), proportion)
 	
 	if count.min() == 1:
 		#Whoopsie no stats involving sem for you
@@ -172,9 +180,11 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 	wins = (placings.map(lambda f: f[0], na_action='ignore') <= 1).sum(axis='columns')
 	top_3s = (placings.map(lambda f: f[0], na_action='ignore') <= 3).sum(axis='columns')
 	top_8s = (placings.map(lambda f: f[0], na_action='ignore') <= 8).sum(axis='columns')
-	win_percent = wins / count
-	top_3_percent = top_3s / count
-	top_8_percent = top_8s / count
+	last_places = (placings.map(lambda f: f[0], na_action='ignore') == 0).sum(axis='columns')
+	win_portion = wins / count
+	top_3_portion = top_3s / count
+	top_8_portion = top_8s / count
+	last_place_portion = last_places / count
 
 	cols = {
 		'Best': best,
@@ -187,21 +197,37 @@ def _get_stats(scores: pandas.DataFrame, placings: pandas.DataFrame, events_to_c
 		'Wins': wins,
 		'Top 3s': top_3s,
 		'Top 8s': top_8s,
-		'Win %': win_percent,
-		'Top 3 %': top_3_percent,
-		'Top 8 %': top_8_percent,
+		'# last place': last_places,
+		'Win %': win_portion,
+		'Top 3 %': top_3_portion,
+		'Top 8 %': top_8_portion,
+		'Last place %': last_place_portion,
 		
 		#Some less used stats down here
-		'# below mean': count_below_mean,
-		'% below mean': percent_below_mean,
-		'# below median': count_below_median,
-		'% below median': percent_below_median,
 		'Median': median_tournament,
+		'# below mean': count_below_mean,
+		'% below mean': portion_below_mean,
+		'# below median': count_below_median,
+		'% below median': portion_below_median,
+		'# below midpoint': count_below_midpoint,
+		'% below midpoint': portion_below_midpoint,
 		'Most inlier': most_inlier,
 		'Most outlier': most_outlier,
 		'Standard error of mean': sem,
-		'Kurtosis': kurt,
-		'Skew': skew,
+		'Kurtosis': scores.kurt(axis='columns', skipna=True),
+		'Skew': scores.skew(axis='columns', skipna=True),
+		'Range': maxes - mins,
+		'Midpoint': midpoint,
+		'Median absolute deviation': abs(scores.subtract(median, axis='index')).median(axis='columns'),
+		'Interquartile range': scipy.stats.iqr(scores.astype(float), axis=1, nan_policy='omit'), #Need nan instead of NAType
+		'25% expectile': scores.apply(expectile_nan, axis='columns', alpha=0.25),
+		'75% expectile': scores.apply(expectile_nan, axis='columns', alpha=0.75),
+		'Geometric mean': scipy.stats.gmean(scores.astype(float), axis=1, nan_policy='omit'),
+		'Geometric mean of +1': scipy.stats.gmean(scores.astype(float) + 1, axis=1, nan_policy='omit') - 1,
+		'Harmonic mean': scipy.stats.hmean(scores.astype(float), axis=1, nan_policy='omit'),
+		'Harmonic mean of +1': scipy.stats.hmean(scores.astype(float) + 1, axis=1, nan_policy='omit') - 1,
+		'10% trimmed mean': scores.apply(trimmean_nan, proportion=0.1, axis='columns'),
+		'Coefficient of variation': mean / stdev,
 	}
 	
 	df = pandas.DataFrame(cols)
@@ -326,7 +352,7 @@ def main():
 	if 'debugpy' in sys.modules:
 		#Evil hack, setting default args for inside VS Code
 		argparser.print_help()
-		args = argparser.parse_args(['--region', 'ACT', '--season-start', '2023-07-01', '--excluded-series', 'Epic Games Night', '--drop-zero-score', '--sort-column', 'low', '/media/Shared/Datasets/Smash'])
+		args = argparser.parse_args(['--region', 'ACT', '--season-start', '2023-07-01', '--season-end', '2023-10-03', '--excluded-series', 'Epic Games Night', '--drop-zero-score', '--sort-column', 'low', '/media/Shared/Datasets/Smash'])
 		logger.info(args)
 	else:
 		args = argparser.parse_args()
