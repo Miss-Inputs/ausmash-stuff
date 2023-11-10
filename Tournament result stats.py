@@ -32,7 +32,7 @@ def get_relevant_player_results(player: Player, game: Game | str, season_start: 
 		series_to_exclude = []
 	results = Result.results_for_player(player, season_start, season_end)
 	#Exclude pro bracket results as we will get the pools result for the whole tournament
-	return [r for r in results if r.event.game == game and not r.event.is_side_bracket and not r.event.is_redemption_bracket and r.total_entrants >= event_size_to_count and r.tournament.series.name not in series_to_exclude and not r.tournament.pools_for_event(r.event)]
+	return [r for r in results if r.event.game == game and not r.event.is_side_bracket and not r.event.is_redemption_bracket and r.total_entrants >= event_size_to_count and r.tournament.series.name not in series_to_exclude and not r.tournament.previous_phase_for_event(r.event)]
 
 def get_redemption_bracket_results(player: Player, game: Game | str, season_start: date | None = None, season_end: date | None = None, event_size_to_count: int = 1, series_to_exclude: Iterable[str] | None = None) -> Sequence[Result]:
 	"""Gets only the results for a player that are for redemption bracket"""
