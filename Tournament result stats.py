@@ -12,8 +12,16 @@ import scipy.stats
 from sklearn.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score
 
-from ausmash import (Game, Match, Player, Region, Result, Tournament,
-                     get_active_players, rounds_from_victory)
+from ausmash import (
+	Game,
+	Match,
+	Player,
+	Region,
+	Result,
+	Tournament,
+	get_active_players,
+	rounds_from_victory,
+)
 
 __doc__ = """Generates a ranking of active players in a region based on tournament results, and stats and summaries of those tournament results.
 
@@ -39,7 +47,6 @@ def get_redemption_bracket_results(player: Player, game: Game | str, season_star
 	if series_to_exclude is None:
 		series_to_exclude = []
 	results = Result.results_for_player(player, season_start, season_end)
-	#Exclude pro bracket results as we will get the pools result for the whole tournament
 	return [r for r in results if r.event.game == game and r.event.is_redemption_bracket and r.total_entrants >= event_size_to_count and r.tournament.series.name not in series_to_exclude]
 
 def _get_rows(players: Iterable[Player], game: Game | str, season_start: date | None=None, season_end: date | None=None, event_size_to_count: int = 1, excluded_series: Iterable[str] | None=None, redemption: bool=False) -> dict[Player, dict[tuple[Tournament, str], int]]:
@@ -339,9 +346,9 @@ def main():
 	argparser.add_argument('--season-start', type=date.fromisoformat, help='Start date for this ranking season, in ISO format, or consider all tournaments if not specified', metavar='YYYY-MM-DD', default=None)
 	argparser.add_argument('--season-end', type=date.fromisoformat, help='End date for this season, in ISO format, or today if not specified', metavar='YYYY-MM-DD', default=None)
 	argparser.add_argument('--minimum-events-to-count', type=int, help='Players must have attended this amount of tournaments (that are counted for the ranking, see --event-size-to-count) in this season to be eligible for the rankings. 3 by default', default=3)
-	argparser.add_argument('--event-size-to-count', type=int, help='Events must have this amount of entrants to count for the ranking (to reduce the effect of smaller tournaments where a player\'s performance is mostly dependent on the distribution of other players attending). 16 by default', default=16)
+	argparser.add_argument('--event-size-to-count', type=int, help="Events must have this amount of entrants to count for the ranking (to reduce the effect of smaller tournaments where a player's performance is mostly dependent on the distribution of other players attending). 16 by default", default=16)
 	argparser.add_argument('--excluded-series', nargs='*', help='Tournaments in this series (as defined by Ausmash) do not count towards the rankings')
-	argparser.add_argument('--drop-zero-score', action=BooleanOptionalAction, help='Don\'t show players with a total of zero score across all tournaments, to avoid any perception that 0-2er friends are being picked on :) (and also because those stats would be less meaningful or useful) but by default all players are listed', default=False)
+	argparser.add_argument('--drop-zero-score', action=BooleanOptionalAction, help="Don't show players with a total of zero score across all tournaments, to avoid any perception that 0-2er friends are being picked on :) (and also because those stats would be less meaningful or useful) but by default all players are listed", default=False)
 	argparser.add_argument('--output-dates', action=BooleanOptionalAction, help='Output the dates that tournaments happened on, instead of the tournament name, so it can be used as a time series. If two tournaments happen on the same day, might break, uh oh', default=False)
 	argparser.add_argument('--redemption', action='store_true', help='Output stats for redemption brackets instead of main bracket')
 	argparser.add_argument('--confidence-percent', type=float, help='Calculate a confidence interval for the mean score at this confidence level, default is 0.95, specify 0 to not do this', default=0.95)
