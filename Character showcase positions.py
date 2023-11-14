@@ -4,7 +4,7 @@ import numpy
 import pandas
 
 import ausmash
-from draw_tier_list import draw_tier_list
+from draw_tier_list import CharacterTierList
 
 
 def main() -> None:
@@ -30,14 +30,14 @@ def main() -> None:
 	df = pandas.DataFrame(rows, columns=['char', 'count', 'sum', 'mean', 'max'])
 	df.set_index('char', inplace=True)
 
-	image = draw_tier_list(df.index, df['mean'], output_type='image', colourmap_name='hsv')
-	image.save('/media/Shared/Datasets/Smash/Character showcase positions.png')
+	tl = CharacterTierList(df.index, df['mean'])
+	tl.to_image('Spectral').save('/media/Shared/Datasets/Smash/Character showcase positions.png')
 
-	image = draw_tier_list(sorted(df.index, key=lambda char: char.name), scores=numpy.linspace(1, 0, df.index.size), output_type='image', colourmap_name='hsv')
-	image.save('/media/Shared/Datasets/Smash/Characters tiered alphabetically.png')
+	tl = CharacterTierList(sorted(df.index, key=lambda char: char.name), scores=numpy.linspace(1, 0, df.index.size))
+	tl.to_image('Spectral').save('/media/Shared/Datasets/Smash/Characters tiered alphabetically.png')
 
-	image = draw_tier_list(df.index, scores=[len(ch.name) for ch in df.index], output_type='image', colourmap_name='hsv')
-	image.save('/media/Shared/Datasets/Smash/Characters tiered by name length.png')
+	tl = CharacterTierList(df.index, scores=[len(ch.name) for ch in df.index])
+	tl.to_image('Spectral').save('/media/Shared/Datasets/Smash/Characters tiered by name length.png')
 	
 
 if __name__ == '__main__':
