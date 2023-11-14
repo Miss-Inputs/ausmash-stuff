@@ -12,6 +12,7 @@ from matplotlib import pyplot  #just for colour maps lol
 from PIL import Image, ImageFilter, ImageFont
 from PIL.ImageDraw import ImageDraw
 from sklearn.cluster import KMeans
+from sklearn.preprocessing import minmax_scale
 
 from ausmash import Character, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
@@ -75,6 +76,14 @@ class TierList(Generic[T], ABC):
 	@abstractmethod
 	def get_item_image(item: T) -> Image.Image: ...
 
+	@cached_property
+	def scaled_centroids(self) -> Mapping[int, float]:
+		"""Scale self.centroids between 0.0 and 1.0"""
+		#Don't worry, it still works on 1D arrays even if it says it wants a MatrixLike in the type hint
+		#If it stops working in some future version use reshape(-1, 1)
+		values = minmax_scale(list(self.centroids.values()))
+		return {k: values[k] for k in self.centroids}
+
 	def to_image(self, colourmap_name: str | None=None, max_images_per_row: int=8) -> Image.Image:
 		images = {char: self.get_item_image(char) for char in self.df['item']}
 		max_image_width = max(im.width for im in images.values())
@@ -82,9 +91,7 @@ class TierList(Generic[T], ABC):
 		#Need to start off with some image size
 		#We start off with enough to get all the images, but this won't actually be enough, because of the text boxes and such
 
-		max_centroid = max(self.centroids.values())
-		#If max_centroid is 0 we'd divide by zero so fall back to just using colours indexed by tier number
-		cmap = pyplot.get_cmap(colourmap_name, lut=None if max_centroid else self._groupby.ngroups)
+		cmap = pyplot.get_cmap(colourmap_name)
 
 		font = None
 		textbox_width = 0
@@ -132,8 +139,7 @@ class TierList(Generic[T], ABC):
 				image = new_image
 				draw = ImageDraw(image)
 
-			#Scale to [0.0, 1.0] interval
-			colour = cmap(self.centroids[tier_number] / max_centroid) if max_centroid else cmap(tier_number)
+			colour = cmap(self.scaled_centroids[tier_number])
 			colour_as_int = tuple(int(v * 255) for v in colour)
 			#Am I stupid, or is there actually nothing in standard library or matplotlib that does this
 			#Well colorsys.rgb_to_yiv would also potentially work
