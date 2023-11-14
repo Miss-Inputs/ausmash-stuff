@@ -80,7 +80,7 @@ def generate_background(width: int, height: int) -> Image.Image:
 	image = Image.fromarray(noise).filter(ImageFilter.ModeFilter(100)).filter(ImageFilter.GaussianBlur(50))
 	return image
 
-def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], tier_names: Mapping[int, str], colourmap_name: str | None=None) -> Image.Image:
+def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], tier_names: Mapping[int, str], colourmap_name: str | None=None, max_images_per_row: int=8) -> Image.Image:
 	groupby = cast('DataFrameGroupBy[int]', df.groupby('tier'))
 	images = {char: get_char_image(char) for char in df['character']}
 	max_image_width = max(im.width for im in images.values())
@@ -99,7 +99,8 @@ def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], ti
 
 	vertical_padding = 10
 	horizontal_padding = 10
-	font_size = 100
+	#Find the largest font size we can use inside the tier name box to fit the available height
+	font_size = max_image_height #font_size is points, but we can assume n points is >= n pixels, so it'll do as a starting point
 	for text in tier_texts.values():
 		size: None | tuple[int, int, int, int] = None
 		while (size is None or (size[3] + vertical_padding) > max_image_height) and font_size > 0:
@@ -113,9 +114,9 @@ def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], ti
 			textbox_width = length
 
 	height = groupby.ngroups * max_image_height
-	width = groupby.size().max() * max_image_width + textbox_width
-
-	#TODO: Maybe you could have a max images per row, and then row height = max_image_height * (max number of images in each tier // max images per row)
+	if not max_images_per_row:
+		max_images_per_row = groupby.size().max()
+	width = min(groupby.size().max(), max_images_per_row) * max_image_width + textbox_width
 	
 	trans = (0,0,0,0)
 	image = Image.new('RGBA', (width, height), trans)
@@ -124,10 +125,17 @@ def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], ti
 	next_line_y = 0
 	for tier_number, group in groupby:
 		tier_text = tier_texts[tier_number]
+
+		row_height = max_image_height * (((group.index.size - 1) // max_images_per_row) + 1)
 	
-		box_end = next_line_y + max_image_height
-		if box_end > image.height or textbox_width > image.width:
-			new_image = Image.new('RGBA', (max(image.width, textbox_width), max(image.height, box_end)), trans)
+		box_end = next_line_y + row_height
+		if box_end > image.height:
+			new_image = Image.new('RGBA', (image.width, box_end), trans)
+			new_image.paste(image)
+			image = new_image
+			draw = ImageDraw(image)
+		if textbox_width > image.width:
+			new_image = Image.new('RGBA', (textbox_width, image.height), trans)
 			new_image.paste(image)
 			image = new_image
 			draw = ImageDraw(image)
@@ -148,17 +156,21 @@ def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], ti
 		draw.text((textbox_width / 2, (next_line_y + box_end) / 2), tier_text, anchor='mm', fill=text_colour, font=font)
 		
 		next_image_x = textbox_width + 1 #Account for border
-		for char in group['character']:
+		for i, char in enumerate(group['character']):
 			char_image = images[char]
+			image_row, image_col = divmod(i, max_images_per_row)
+			if not image_col:
+				next_image_x = textbox_width + 1
+
+			image_y = next_line_y + (max_image_height * image_row)
 			if next_image_x + char_image.width > image.width:
 				new_image = Image.new('RGBA', (next_image_x + char_image.width, image.height), trans)
 				new_image.paste(image)
 				image = new_image
 				draw = ImageDraw(image)
 				#TODO: Optionally draw the score or name below each character
-			image.paste(char_image, (next_image_x, next_line_y))
+			image.paste(char_image, (next_image_x, image_y))
 			next_image_x += char_image.width
-		# next_text_x = bbox[0]
 		next_line_y = box_end
 
 	background = generate_background(image.width, image.height)
@@ -189,7 +201,6 @@ def draw_tier_list(characters: Iterable[Character], scores: Iterable[float], out
 	if output_type == 'str':
 		return _tier_list_to_text(df, tier_names)
 	if output_type == 'image':
-		# print(df.groupby('tier', as_index=False, group_keys=False).score.agg(['min', 'max']))
 		return _tier_list_to_image(df, centroids, tier_names, colourmap_name)
 	raise ValueError(output_type)
 	
