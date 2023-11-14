@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
+from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 import numpy
 import pandas
@@ -30,36 +31,6 @@ def _get_tiers(scores: 'pandas.Series[float]', n_clusters: int) -> tuple[pandas.
 	centroids = pandas.Series(kmeans.cluster_centers_.squeeze(), name='centroids').rename(mapping).sort_index().to_dict()
 	return tiers, centroids
 
-def get_combined_char_image(character: CombinedCharacter) -> Image.Image:
-	if len(character.chars) == 2:
-		#Divvy it up into two diagonally, I dunno how to make it look the least shite
-		first, second = character.chars
-		first_image = get_char_image(first)
-		second_image = get_char_image(second)
-		if first_image.size != second_image.size:
-			second_image = second_image.resize(first_image.size)
-		#numpy.triu/tril won't work nicely on non-square rectangles
-		orig_size = first_image.size
-		max_dim = max(orig_size)
-		square_size = max_dim, max_dim
-		a = numpy.array(first_image.resize(square_size))
-		b = numpy.array(second_image.resize(square_size))
-		return Image.fromarray(numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2) + numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)).resize(orig_size)
-
-	#Just merge them together if we have a combined character with 3 or more	
-	images = [numpy.array(get_char_image(char)) for char in character.chars]
-	return Image.fromarray(numpy.mean(images, axis=(0)).astype('uint8'))
-
-def get_char_image(character: Character) -> Image.Image:
-	if isinstance(character, CombinedCharacter):
-		return get_combined_char_image(character)
-	url = character.character_select_screen_pic_url
-	response = requests.get(url, stream=True, timeout=10)
-	response.raise_for_status()
-	image = Image.open(response.raw)
-
-	return image
-
 def generate_background(width: int, height: int) -> Image.Image:
 	#Generate some weird clouds
 	rng = numpy.random.default_rng()
@@ -68,9 +39,10 @@ def generate_background(width: int, height: int) -> Image.Image:
 	image = Image.fromarray(noise).filter(ImageFilter.ModeFilter(100)).filter(ImageFilter.GaussianBlur(50))
 	return image
 
-class TierList:
-	def __init__(self, characters: Iterable[Character], scores: Iterable[float], num_tiers: int=7) -> None:
-		self.df = pandas.DataFrame({'character': characters, 'score': scores})
+T = TypeVar('T')
+class TierList(Generic[T], ABC):
+	def __init__(self, items: Iterable[T], scores: Iterable[float], num_tiers: int=7) -> None:
+		self.df = pandas.DataFrame(list(zip(items, scores)), columns=['item', 'score'])
 		self.df.sort_values('score', ascending=False, inplace=True)
 		self.df['tier'], self.centroids = _get_tiers(self.df['score'], num_tiers)
 		self.df['rank'] = numpy.arange(1, self.df.index.size + 1)
@@ -86,7 +58,7 @@ class TierList:
 			lines.append(f'{self.tier_names.get(tier_number, tier_number)}: {group.score.min()} to {group.score.max()}')
 			lines.append('-' * 10)
 
-			lines += (f'{row.rank}: {row.character}' for row in group.itertuples())
+			lines += (f'{row.rank}: {row.item}' for row in group.itertuples())
 			lines.append('')
 		return '\n'.join(lines)
 	
@@ -99,8 +71,12 @@ class TierList:
 		"""Based off tier names, not necessarily using all of them if there aren't as many tiers, falling back to a default name if needed"""
 		return {tier_number: self.tier_names.get(tier_number, f'Tier {tier_number}') for tier_number in self._groupby.groups}
 
+	@staticmethod
+	@abstractmethod
+	def get_item_image(item: T) -> Image.Image: ...
+
 	def to_image(self, colourmap_name: str | None=None, max_images_per_row: int=8) -> Image.Image:
-		images = {char: get_char_image(char) for char in self.df['character']}
+		images = {char: self.get_item_image(char) for char in self.df['item']}
 		max_image_width = max(im.width for im in images.values())
 		max_image_height = max(im.height for im in images.values())
 		#Need to start off with some image size
@@ -150,7 +126,7 @@ class TierList:
 				new_image.paste(image)
 				image = new_image
 				draw = ImageDraw(image)
-			if textbox_width > image.width:
+			if textbox_width > image.width: #This probably doesn't happen
 				new_image = Image.new('RGBA', (textbox_width, image.height), trans)
 				new_image.paste(image)
 				image = new_image
@@ -169,7 +145,7 @@ class TierList:
 			draw.text((textbox_width / 2, (next_line_y + box_end) / 2), tier_text, anchor='mm', fill=text_colour, font=font)
 			
 			next_image_x = textbox_width + 1 #Account for border
-			for i, char in enumerate(group['character']):
+			for i, char in enumerate(group['item']):
 				char_image = images[char]
 				image_row, image_col = divmod(i, max_images_per_row)
 				if not image_col:
@@ -190,19 +166,53 @@ class TierList:
 		background.paste(image, mask=image)
 		return background
 	
+class CharacterTierList(TierList[Character]):
+
+	@staticmethod
+	def get_item_image(item: Character) -> Image.Image:
+		if isinstance(item, CombinedCharacter):
+			return CharacterTierList.get_combined_char_image(item)
+		url = item.character_select_screen_pic_url
+		response = requests.get(url, stream=True, timeout=10)
+		response.raise_for_status()
+		image = Image.open(response.raw)
+
+		return image
+
+	@staticmethod
+	def get_combined_char_image(character: CombinedCharacter) -> Image.Image:
+		if len(character.chars) == 2:
+			#Divvy it up into two diagonally, I dunno how to make it look the least shite
+			first, second = character.chars
+			first_image = CharacterTierList.get_item_image(first)
+			second_image = CharacterTierList.get_item_image(second)
+			if first_image.size != second_image.size:
+				second_image = second_image.resize(first_image.size)
+			#numpy.triu/tril won't work nicely on non-square rectangles
+			orig_size = first_image.size
+			max_dim = max(orig_size)
+			square_size = max_dim, max_dim
+			a = numpy.array(first_image.resize(square_size))
+			b = numpy.array(second_image.resize(square_size))
+			return Image.fromarray(numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2) + numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)).resize(orig_size)
+
+		#Just merge them together if we have a combined character with 3 or more	
+		images = [numpy.array(CharacterTierList.get_item_image(char)) for char in character.chars]
+		return Image.fromarray(numpy.mean(images, axis=(0)).astype('uint8'))
+	
 def main() -> None:
 	#TODO: Proper command line interfacey
 	print('testing for now')
 	miis = set()
-	chars = set()
+	chars: set[Character] = set()
 	for char in Character.characters_in_game('SSBU'):
 		if char.name.startswith('Mii'):
 			miis.add(char)
 		else:
 			chars.add(combine_echo_fighters(char))
 	chars.add(CombinedCharacter('Mii Fighters', miis))
-	tierlist = TierList(list(chars), [len(char.name) for char in chars], 7)
-	tierlist.to_image().show()
+	tierlist = CharacterTierList(chars, [len(char.name) for char in chars], 7)
+	tierlist.to_image('Spectral').show()
 
 if __name__ == '__main__':
 	main()
