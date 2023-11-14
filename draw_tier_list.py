@@ -142,7 +142,9 @@ def _tier_list_to_image(df: pandas.DataFrame, centroids: Mapping[int, float], ti
 		#Well colorsys.rgb_to_yiv would also potentially work
 		luminance = (colour[0] * 0.2126) + (colour[1] * 0.7152) + (colour[2] * 0.0722)
 		text_colour = 'white' if luminance <= 0.5 else 'black'
-		draw.rectangle((0, next_line_y, textbox_width, box_end), fill=colour_as_int, outline='black', width=2)
+		draw.rectangle((0, next_line_y, 0, box_end - 1), fill='black')
+		draw.rectangle((textbox_width, next_line_y, textbox_width, box_end - 1), fill='black')
+		draw.rectangle((1, next_line_y, textbox_width - 1, box_end - 1), fill=colour_as_int, outline='black', width=1)
 		draw.text((textbox_width / 2, (next_line_y + box_end) / 2), tier_text, anchor='mm', fill=text_colour, font=font)
 		
 		next_image_x = textbox_width + 1 #Account for border
