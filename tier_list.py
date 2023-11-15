@@ -36,7 +36,7 @@ def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
 	for i in range(2, scores.nunique()):
 		tiers = _get_clusters(scores, i)
 		score = -tiers.inertia
-		if best_score > score:
+		if best_score >= score:
 			continue
 		if tiers.kmeans_iterations == 300:
 			continue
