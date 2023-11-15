@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, TypeVar
 
 import numpy
 import pandas
@@ -12,6 +14,7 @@ from matplotlib import pyplot  #just for colour maps lol
 from PIL import Image, ImageFilter, ImageFont
 from PIL.ImageDraw import ImageDraw
 from sklearn.cluster import KMeans
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
 
 from ausmash import Character, combine_echo_fighters
@@ -21,19 +24,47 @@ if TYPE_CHECKING:
 	from pandas.core.groupby.generic import DataFrameGroupBy
 
 
-def _get_tiers(scores: 'pandas.Series[float]', n_clusters: int) -> tuple[pandas.Series, Mapping[int, float]]:
+class Tiers(NamedTuple):
+	tiers: 'pandas.Series[int]' #Index = the same one that was passed in for scores
+	centroids: Mapping[int, float] #For each tier number
+	inertia: float
+	kmeans_iterations: int
+
+def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
+	best_score = -numpy.inf
+	best = None
+	for i in range(2, scores.nunique()):
+		tiers = _get_clusters(scores, i)
+		score = -tiers.inertia
+		if best_score > score:
+			continue
+		if tiers.kmeans_iterations == 300:
+			continue
+		if tiers.tiers.nunique() < len(tiers.centroids):
+			continue
+		best = tiers
+		best_score = score
+	if not best:
+		raise RuntimeError('oh no')
+	return best
+
+def _get_clusters(scores: 'pandas.Series[float]', n_clusters: int|Literal['auto']) -> Tiers:
 	#Returns tiers for each row, centroids
+	if n_clusters == 'auto':
+		return find_best_clusters(scores)
 	kmeans = KMeans(n_clusters, n_init='auto', random_state=0)
-	labels = kmeans.fit_predict(scores.to_numpy().reshape(-1, 1))
+	with warnings.catch_warnings():
+		warnings.simplefilter('ignore', ConvergenceWarning)
+		labels = kmeans.fit_predict(scores.to_numpy().reshape(-1, 1))
 	raw_tiers = pandas.Series(labels, index=scores.index, name='tiers')
 	#The numbers in raw_tiers are just random values for the sake of being distinct, we are already sorted by score, so have ascending tiers instead
 	mapping = {c: i for i, c in enumerate(raw_tiers.unique())}
 	tiers = raw_tiers.map(mapping)
 	centroids = pandas.Series(kmeans.cluster_centers_.squeeze(), name='centroids').rename(mapping).sort_index().to_dict()
-	return tiers, centroids
+	return Tiers(tiers, centroids, kmeans.inertia_, kmeans.n_iter_)
 
 def generate_background(width: int, height: int) -> Image.Image:
-	#Generate some weird clouds
+	"""Generate some nice pretty rainbow clouds"""
 	rng = numpy.random.default_rng()
 	noise = rng.integers(0, (128, 128, 128), (height, width, 3), 'uint8', True)
 	#Could also have a fourth dim with max=255 and then layer multiple transparent clouds on top of each other
@@ -41,14 +72,23 @@ def generate_background(width: int, height: int) -> Image.Image:
 	return image
 
 T = TypeVar('T')
-class TierList(Generic[T], ABC):
-	def __init__(self, items: Iterable[T], scores: Iterable[float], num_tiers: int=7) -> None:
-		self.df = pandas.DataFrame(list(zip(items, scores)), columns=['item', 'score'])
-		self.df.sort_values('score', ascending=False, inplace=True)
-		self.df['tier'], self.centroids = _get_tiers(self.df['score'], num_tiers)
-		self.df['rank'] = numpy.arange(1, self.df.index.size + 1)
+
+@dataclass
+class TieredItem(Generic[T]):
+	item: T
+	score: float
+
+class BaseTierList(Generic[T], ABC):
+	def __init__(self, items: Iterable[TieredItem[T]], num_tiers: int | Literal['auto']=7) -> None:
+		""":param num_tiers: Number of tiers to separate scores into. If "auto", finds the biggest number of tiers before it would stop making sense, but that often doesn't work very well and is slower to calculate, so don't bother."""
+		self.data = pandas.DataFrame(list(items), columns=['item', 'score'])
+		self.data.sort_values('score', ascending=False, inplace=True)
+		self.tiers = _get_clusters(self.data['score'], num_tiers)
+		self.data['tier'] = self.tiers.tiers
+		self.data['rank'] = numpy.arange(1, self.data.index.size + 1)
 		
 		tier_letters = list('SABCDEFGHIJKLZ')
+		#TODO: Option to provide existing tiers
 		#TODO: Argument to provide tier names, or append min/max of each tier to _tier_texts, etc
 		self.tier_names = dict(enumerate(tier_letters))
 
@@ -65,7 +105,7 @@ class TierList(Generic[T], ABC):
 	
 	@cached_property
 	def _groupby(self) -> 'DataFrameGroupBy[int]':
-		return self.df.groupby('tier')
+		return self.data.groupby('tier')
 	
 	@cached_property
 	def _tier_texts(self) -> Mapping[int, str]:
@@ -78,14 +118,14 @@ class TierList(Generic[T], ABC):
 
 	@cached_property
 	def scaled_centroids(self) -> Mapping[int, float]:
-		"""Scale self.centroids between 0.0 and 1.0"""
+		"""Scale centroids between 0.0 and 1.0"""
 		#Don't worry, it still works on 1D arrays even if it says it wants a MatrixLike in the type hint
 		#If it stops working in some future version use reshape(-1, 1)
-		values = minmax_scale(list(self.centroids.values()))
-		return {k: values[k] for k in self.centroids}
+		values = minmax_scale(list(self.tiers.centroids.values()))
+		return {k: values[k] for k in self.tiers.centroids}
 
-	def to_image(self, colourmap_name: str | None=None, max_images_per_row: int=8) -> Image.Image:
-		images = {char: self.get_item_image(char) for char in self.df['item']}
+	def to_image(self, colourmap_name: str | None=None, max_images_per_row: int|None=8) -> Image.Image:
+		images = {char: self.get_item_image(char) for char in self.data['item']}
 		max_image_width = max(im.width for im in images.values())
 		max_image_height = max(im.height for im in images.values())
 		#Need to start off with some image size
@@ -163,7 +203,7 @@ class TierList(Generic[T], ABC):
 					new_image.paste(image)
 					image = new_image
 					draw = ImageDraw(image)
-					#TODO: Optionally draw the score or name below each character
+					#TODO: Optionally draw the score or name below each character (maybe that's better off with an overriten get_item_image, or maybe get_item_image_with_score)
 				image.paste(char_image, (next_image_x, image_y))
 				next_image_x += char_image.width
 			next_line_y = box_end
@@ -172,7 +212,7 @@ class TierList(Generic[T], ABC):
 		background.paste(image, mask=image)
 		return background
 	
-class CharacterTierList(TierList[Character]):
+class CharacterTierList(BaseTierList[Character]):
 
 	@staticmethod
 	def get_item_image(item: Character) -> Image.Image:
@@ -217,7 +257,10 @@ def main() -> None:
 		else:
 			chars.add(combine_echo_fighters(char))
 	chars.add(CombinedCharacter('Mii Fighters', miis))
-	tierlist = CharacterTierList(chars, [len(char.name) for char in chars], 7)
+	scores = [TieredItem(char, len(char.name)) for char in chars]
+	tierlist = CharacterTierList(scores, 7)
+	print(tierlist.tiers.inertia, tierlist.tiers.kmeans_iterations, tierlist.tiers.tiers.nunique(), len(tierlist.tiers.centroids))
+	print(tierlist.tiers.centroids)
 	tierlist.to_image('Spectral').show()
 
 if __name__ == '__main__':

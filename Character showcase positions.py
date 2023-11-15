@@ -4,7 +4,7 @@ import numpy
 import pandas
 
 import ausmash
-from draw_tier_list import CharacterTierList
+from tier_list import CharacterTierList, TieredItem
 
 
 def main() -> None:
@@ -30,13 +30,13 @@ def main() -> None:
 	df = pandas.DataFrame(rows, columns=['char', 'count', 'sum', 'mean', 'max'])
 	df.set_index('char', inplace=True)
 
-	tl = CharacterTierList(df.index, df['mean'])
+	tl = CharacterTierList([TieredItem(row.Index, row.mean) for row in df.itertuples()])
 	tl.to_image('Spectral').save('/media/Shared/Datasets/Smash/Character showcase positions.png')
 
-	tl = CharacterTierList(sorted(df.index, key=lambda char: char.name), scores=numpy.linspace(1, 0, df.index.size))
+	tl = CharacterTierList([TieredItem(char, score) for char, score in zip(sorted(df.index, key=lambda char: char.name), numpy.linspace(1, 0, df.index.size))])
 	tl.to_image('Spectral').save('/media/Shared/Datasets/Smash/Characters tiered alphabetically.png')
 
-	tl = CharacterTierList(df.index, scores=[len(ch.name) for ch in df.index])
+	tl = CharacterTierList([TieredItem(char, len(char.name)) for char in df.index])
 	tl.to_image('Spectral').save('/media/Shared/Datasets/Smash/Characters tiered by name length.png')
 	
 
