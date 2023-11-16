@@ -41,7 +41,10 @@ def main() -> None:
 	df = pandas.DataFrame(rows, columns=['char', 'count', 'sum', 'mean', 'max'])
 	df.set_index('char', inplace=True)
 
-	tl = CharacterTierList([TieredItem(row.Index, row.mean) for row in df.itertuples()])
+	tl = CharacterTierList(
+		[TieredItem(row.Index, row.mean) for row in df.itertuples()],
+		append_minmax_to_tier_titles=True,
+	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
 	)
@@ -53,13 +56,17 @@ def main() -> None:
 				sorted(df.index, key=lambda char: char.name),
 				numpy.linspace(1, 0, df.index.size),
 			)
-		]
+		],
+		append_minmax_to_tier_titles=False,
 	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Characters tiered alphabetically.png'
 	)
 
-	tl = CharacterTierList([TieredItem(char, len(char.name)) for char in df.index])
+	tl = CharacterTierList(
+		[TieredItem(char, len(char.name)) for char in df.index],
+		append_minmax_to_tier_titles=True,
+	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Characters tiered by name length.png'
 	)

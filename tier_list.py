@@ -119,42 +119,41 @@ T = TypeVar('T')
 
 @dataclass
 class TieredItem(Generic[T]):
+	"""An item that has a score associated with it used for ranking.
+
+	item should not be None, and score should be a higher number for better items."""
+
 	item: T
 	score: float
 
 
 class BaseTierList(Generic[T], ABC):
 	def __init__(
-		self, items: Iterable[TieredItem[T]], num_tiers: int | Literal['auto'] = 7
+		self,
+		items: Iterable[TieredItem[T]],
+		num_tiers: int | Literal['auto'] = 7,
+		append_minmax_to_tier_titles: bool = False,
 	) -> None:
 		""":param num_tiers: Number of tiers to separate scores into. If "auto", finds the biggest number of tiers before it would stop making sense, but that often doesn't work very well and is slower to calculate, so don't bother."""
 		self.data = pandas.DataFrame(list(items), columns=['item', 'score'])
 		self.data.sort_values('score', ascending=False, inplace=True)
-		self.tiers = _get_clusters(self.data['score'], num_tiers)
-		self.data['tier'] = self.tiers.tiers
 		self.data['rank'] = numpy.arange(1, self.data.index.size + 1)
 
-		tier_letters = list('SABCDEFGHIJKLZ')
-		# TODO: Option to provide existing tiers
-		# TODO: Argument to provide tier names, or append min/max of each tier to _tier_texts, etc
-		self.tier_names = dict(enumerate(tier_letters))
+		self.tiers = _get_clusters(self.data['score'], num_tiers)
+		self.data['tier'] = self.tiers.tiers
+
+		self.append_minmax_to_tier_titles = append_minmax_to_tier_titles
+		tier_letters = 'SABCDEFGHIJKLZ'
+		# TODO: Option to provide existing tiers (would need to calculate centroids manually I guess)
+		self.tier_names: Mapping[int, str] = dict(enumerate(tier_letters))
 
 	def to_text(self) -> str:
-		lines = []
+		lines: list[str] = []
 		for tier_number, group in self._groupby:
-			tier_name = self.tier_names.get(tier_number, f'Tier {tier_number}')
-			max_ = group.score.max()
-			min_ = group.score.min()
-			tier_title = (
-				f'{tier_name}: {max_}'
-				if numpy.isclose(max_, min_)
-				else f'{tier_name}: {min_} to {max_}'
-			)
-
 			lines.extend(
 				(
 					'=' * 20,
-					tier_title,
+					self.displayed_tier_text(tier_number, group),
 					'-' * 10,
 					*(f'{row.rank}: {row.item}' for row in group.itertuples()),
 					'',
@@ -173,6 +172,21 @@ class BaseTierList(Generic[T], ABC):
 			tier_number: self.tier_names.get(tier_number, f'Tier {tier_number}')
 			for tier_number in self._groupby.groups
 		}
+
+	def displayed_tier_text(
+		self, tier_number: int, group: pandas.DataFrame | None = None
+	):
+		""":param group: If you are already iterating through ._groupby, you can pass each group so you don't have to call get_group"""
+		text = self._tier_texts[tier_number]
+		if self.append_minmax_to_tier_titles:
+			if group is None:
+				group = self._groupby.get_group(tier_number)
+			min_ = group['score'].min()
+			max_ = group['score'].max()
+			if numpy.isclose(min_, max_):
+				return f'{text} ({min_})'
+			return f'{text} ({min_} to {max_})'
+		return text
 
 	@staticmethod
 	@abstractmethod
@@ -199,17 +213,19 @@ class BaseTierList(Generic[T], ABC):
 		This doesn't look too great if the images are of uneven size, but that's allowed."""
 		max_image_width = max(im.width for im in self.images.values())
 		max_image_height = max(im.height for im in self.images.values())
+		tier_texts = {i: self.displayed_tier_text(i) for i in self._tier_texts}
 
 		cmap = pyplot.get_cmap(colourmap_name)
 
-		font: ImageFont.ImageFont | None = None
+		font: ImageFont.ImageFont | ImageFont.FreeTypeFont | None = None
 		textbox_width = 0
 
 		vertical_padding = 10
 		horizontal_padding = 10
 		# Find the largest font size we can use inside the tier name box to fit the available height
-		font_size = max_image_height * 2 # font_size is points and not pixels, but it'll do as a starting point
-		for text in self._tier_texts.values():
+		# font_size is points and not pixels, but it'll do as a starting point
+		font_size = max_image_height * 2
+		for text in tier_texts.values():
 			size: None | tuple[int, int, int, int] = None
 			while (
 				size is None or (size[3] + vertical_padding) > max_image_height
@@ -242,7 +258,7 @@ class BaseTierList(Generic[T], ABC):
 		actual_width = 0
 		next_line_y = 0
 		for tier_number, group in self._groupby:
-			tier_text = self._tier_texts[tier_number]
+			tier_text = tier_texts[tier_number]
 
 			row_height = max_image_height * (
 				((group.index.size - 1) // max_images_per_row) + 1
@@ -413,7 +429,7 @@ def main() -> None:
 	listy = TextBoxTierList(
 		[TieredItem(player.player, player.elo) for player in players]
 	)
-	listy.to_image('rainbow').show()
+	listy.to_image('rainbow_r').show()
 
 
 if __name__ == '__main__':
