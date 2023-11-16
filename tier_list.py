@@ -208,7 +208,7 @@ class BaseTierList(Generic[T], ABC):
 		vertical_padding = 10
 		horizontal_padding = 10
 		# Find the largest font size we can use inside the tier name box to fit the available height
-		font_size = max_image_height  # font_size is points, but we can assume n points is >= n pixels, so it'll do as a starting point
+		font_size = max_image_height * 2 # font_size is points and not pixels, but it'll do as a starting point
 		for text in self._tier_texts.values():
 			size: None | tuple[int, int, int, int] = None
 			while (
