@@ -44,6 +44,7 @@ def main() -> None:
 	tl = CharacterTierList(
 		[TieredItem(row.Index, row.mean) for row in df.itertuples()],
 		append_minmax_to_tier_titles=True,
+		score_formatter='.4g',
 	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
@@ -58,6 +59,7 @@ def main() -> None:
 			)
 		],
 		append_minmax_to_tier_titles=False,
+		score_formatter='%',
 	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Characters tiered alphabetically.png'
@@ -66,6 +68,7 @@ def main() -> None:
 	tl = CharacterTierList(
 		[TieredItem(char, len(char.name)) for char in df.index],
 		append_minmax_to_tier_titles=True,
+		score_formatter=',',
 	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Characters tiered by name length.png'

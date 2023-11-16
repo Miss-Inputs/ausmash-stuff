@@ -133,6 +133,7 @@ class BaseTierList(Generic[T], ABC):
 		items: Iterable[TieredItem[T]],
 		num_tiers: int | Literal['auto'] = 7,
 		append_minmax_to_tier_titles: bool = False,
+		score_formatter: str = '',
 	) -> None:
 		""":param num_tiers: Number of tiers to separate scores into. If "auto", finds the biggest number of tiers before it would stop making sense, but that often doesn't work very well and is slower to calculate, so don't bother."""
 		self.data = pandas.DataFrame(list(items), columns=['item', 'score'])
@@ -143,8 +144,10 @@ class BaseTierList(Generic[T], ABC):
 		self.data['tier'] = self.tiers.tiers
 
 		self.append_minmax_to_tier_titles = append_minmax_to_tier_titles
+		self.score_formatter = score_formatter
 		tier_letters = 'SABCDEFGHIJKLZ'
 		# TODO: Option to provide existing tiers (would need to calculate centroids manually I guess)
+		# TODO: Option to provide custom images
 		self.tier_names: Mapping[int, str] = dict(enumerate(tier_letters))
 
 	def to_text(self) -> str:
@@ -184,8 +187,8 @@ class BaseTierList(Generic[T], ABC):
 			min_ = group['score'].min()
 			max_ = group['score'].max()
 			if numpy.isclose(min_, max_):
-				return f'{text} ({min_})'
-			return f'{text} ({min_} to {max_})'
+				return f'{text} ({min_:{self.score_formatter}})'
+			return f'{text} ({min_:{self.score_formatter}} to {max_:{self.score_formatter}})'
 		return text
 
 	@staticmethod
@@ -255,7 +258,7 @@ class BaseTierList(Generic[T], ABC):
 		image = Image.new('RGBA', (width, height), trans)
 		draw = ImageDraw(image)
 
-		actual_width = 0
+		actual_width = width
 		next_line_y = 0
 		for tier_number, group in self._groupby:
 			tier_text = tier_texts[tier_number]
@@ -349,7 +352,9 @@ class TierList(BaseTierList[T]):
 
 
 class TextBoxTierList(TierList[T]):
-	"""Pads out the images from the default implementation of get_item_image"""
+	"""Pads out the images from the default implementation of get_item_image, so they are all evenly spaced.
+
+	Hopefully looks a bit less bad."""
 
 	@cached_property
 	def images(self) -> Mapping[T, Image.Image]:
@@ -415,7 +420,7 @@ def main() -> None:
 			chars.add(combine_echo_fighters(char))
 	chars.add(CombinedCharacter('Mii Fighters', miis))
 	scores = [TieredItem(char, len(char.name)) for char in chars]
-	tierlist = CharacterTierList(scores, 7)
+	tierlist = CharacterTierList(scores, 7, append_minmax_to_tier_titles=True)
 	print(
 		tierlist.tiers.inertia,
 		tierlist.tiers.kmeans_iterations,
@@ -427,7 +432,9 @@ def main() -> None:
 
 	players = [p for p in Elo.for_game('SSBU', 'ACT') if p.is_active]
 	listy = TextBoxTierList(
-		[TieredItem(player.player, player.elo) for player in players]
+		[TieredItem(player.player, player.elo) for player in players],
+		append_minmax_to_tier_titles=True,
+		score_formatter=',',
 	)
 	listy.to_image('rainbow_r').show()
 
