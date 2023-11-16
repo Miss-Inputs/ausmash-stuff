@@ -212,6 +212,11 @@ def cluster_into_tiers(mean_scores: pandas.Series) -> pandas.Series | None:
 	# logger.info(tier_names)
 	return tiers.map({i: tier_names[i] for i in tiers.unique()})
 
+def expectile_nan(s: pandas.Series, alpha: float) -> float:
+	return scipy.stats.expectile(s.dropna(), alpha=alpha)
+
+def trimmean_nan(s: pandas.Series, proportion: float) -> float:
+	return scipy.stats.trim_mean(s.dropna(), proportion)
 
 def _get_stats(
 	scores: pandas.DataFrame,
@@ -250,12 +255,6 @@ def _get_stats(
 		axis='columns'
 	)
 	portion_below_midpoint = count_below_midpoint / count
-
-	def expectile_nan(s: pandas.Series, alpha: float) -> float:
-		return scipy.stats.expectile(s.dropna(), alpha=alpha)
-
-	def trimmean_nan(s: pandas.Series, proportion: float) -> float:
-		return scipy.stats.trim_mean(s.dropna(), proportion)
 
 	if count.min() == 1:
 		# Whoopsie no stats involving sem for you
