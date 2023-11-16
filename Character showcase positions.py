@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from itertools import starmap
+
 import numpy
 import pandas
 
@@ -51,13 +53,7 @@ def main() -> None:
 	)
 
 	tl = CharacterTierList(
-		[
-			TieredItem(char, score)
-			for char, score in zip(
-				sorted(df.index, key=lambda char: char.name),
-				numpy.linspace(1, 0, df.index.size),
-			)
-		],
+		list(starmap(TieredItem, zip(sorted(df.index, key=lambda char: char.name), numpy.linspace(1, 0, df.index.size)))),
 		append_minmax_to_tier_titles=False,
 		score_formatter='%',
 	)
