@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+import re
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Generic, Literal, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Literal, NamedTuple, TypeVar
 
 import numpy
 import pandas
@@ -17,7 +18,7 @@ from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
 
-from ausmash import Character, combine_echo_fighters
+from ausmash import Character, Elo, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
 
 if TYPE_CHECKING:
@@ -71,8 +72,28 @@ def generate_background(width: int, height: int) -> Image.Image:
 	image = Image.fromarray(noise).filter(ImageFilter.ModeFilter(100)).filter(ImageFilter.GaussianBlur(50))
 	return image
 
-T = TypeVar('T')
+def pad_image(image: Image.Image, width: int, height: int, colour: Any, centred: bool=False) -> Image.Image:
+	"""Return expanded version of image with blank space to ensure a certain size.
+	
+	Don't forget to call ImageDraw again"""
+	new_image = Image.new(image.mode, (width, height), colour)
+	if image.palette:
+		new_image.putpalette(image.getpalette())
+	if centred:
+		x = (width - image.width) // 2
+		y = (height - image.height) // 2
+	else:
+		x = y = 0
+	new_image.paste(image, (x, y))
+	return new_image
 
+def draw_box(image: Image.Image, colour: Any='black', width: int=2) -> Image.Image:
+	"""Modifies image in-place and returns it with a border around the sides"""
+	draw = ImageDraw(image)
+	draw.rectangle((0, 0, image.width, image.height), outline=colour, width=width)
+	return image
+
+T = TypeVar('T')
 @dataclass
 class TieredItem(Generic[T]):
 	item: T
@@ -123,17 +144,21 @@ class BaseTierList(Generic[T], ABC):
 		#If it stops working in some future version use reshape(-1, 1)
 		values = minmax_scale(list(self.tiers.centroids.values()))
 		return {k: values[k] for k in self.tiers.centroids}
+	
+	@cached_property
+	def images(self) -> Mapping[T, Image.Image]:
+		return {item: self.get_item_image(item) for item in self.data['item']}
 
 	def to_image(self, colourmap_name: str | None=None, max_images_per_row: int|None=8) -> Image.Image:
-		images = {char: self.get_item_image(char) for char in self.data['item']}
-		max_image_width = max(im.width for im in images.values())
-		max_image_height = max(im.height for im in images.values())
-		#Need to start off with some image size
-		#We start off with enough to get all the images, but this won't actually be enough, because of the text boxes and such
+		"""Render the tier list as an image.
+		
+		This doesn't look too great if the images are of uneven size, but that's allowed."""
+		max_image_width = max(im.width for im in self.images.values())
+		max_image_height = max(im.height for im in self.images.values())
 
 		cmap = pyplot.get_cmap(colourmap_name)
 
-		font = None
+		font: ImageFont.ImageFont | None = None
 		textbox_width = 0
 
 		vertical_padding = 10
@@ -143,11 +168,11 @@ class BaseTierList(Generic[T], ABC):
 		for text in self._tier_texts.values():
 			size: None | tuple[int, int, int, int] = None
 			while (size is None or (size[3] + vertical_padding) > max_image_height) and font_size > 0:
-				font = ImageFont.load_default(font_size)
+				font = font.font_variant(size=font_size) if isinstance(font, ImageFont.FreeTypeFont) else ImageFont.load_default(font_size)
 				size = font.getbbox(text)
 				font_size -= 1
-			assert font, 'how did my font end up being null :('
-			assert size, 'meowwww'
+			assert font, 'how did my font end up being None :('
+			assert size, 'meowwww' #FIXME I think this can happen if max image size is <= the smallest size of the default font? (I think even if font_size = 0 it's not smaller than like 8 or whichever)
 			length = size[2] + horizontal_padding
 			if length > textbox_width:
 				textbox_width = length
@@ -161,6 +186,7 @@ class BaseTierList(Generic[T], ABC):
 		image = Image.new('RGBA', (width, height), trans)
 		draw = ImageDraw(image)
 
+		actual_width = 0
 		next_line_y = 0
 		for tier_number, group in self._groupby:
 			tier_text = self._tier_texts[tier_number]
@@ -169,14 +195,10 @@ class BaseTierList(Generic[T], ABC):
 		
 			box_end = next_line_y + row_height
 			if box_end > image.height:
-				new_image = Image.new('RGBA', (image.width, box_end), trans)
-				new_image.paste(image)
-				image = new_image
+				image = pad_image(image, image.width, box_end, trans)
 				draw = ImageDraw(image)
 			if textbox_width > image.width: #This probably doesn't happen
-				new_image = Image.new('RGBA', (textbox_width, image.height), trans)
-				new_image.paste(image)
-				image = new_image
+				image = pad_image(image, textbox_width, image.height, trans)
 				draw = ImageDraw(image)
 
 			colour = cmap(self.scaled_centroids[tier_number])
@@ -191,27 +213,59 @@ class BaseTierList(Generic[T], ABC):
 			draw.text((textbox_width / 2, (next_line_y + box_end) / 2), tier_text, anchor='mm', fill=text_colour, font=font)
 			
 			next_image_x = textbox_width + 1 #Account for border
-			for i, char in enumerate(group['item']):
-				char_image = images[char]
+			for i, item in enumerate(group['item']):
+				item_image = self.images[item]
 				image_row, image_col = divmod(i, max_images_per_row)
 				if not image_col:
 					next_image_x = textbox_width + 1
 
 				image_y = next_line_y + (max_image_height * image_row)
-				if next_image_x + char_image.width > image.width:
-					new_image = Image.new('RGBA', (next_image_x + char_image.width, image.height), trans)
-					new_image.paste(image)
-					image = new_image
+				if next_image_x + item_image.width > image.width:
+					image = pad_image(image, next_image_x + item_image.width, image.height, trans)
 					draw = ImageDraw(image)
 					#TODO: Optionally draw the score or name below each character (maybe that's better off with an overriten get_item_image, or maybe get_item_image_with_score)
-				image.paste(char_image, (next_image_x, image_y))
-				next_image_x += char_image.width
+				image.paste(item_image, (next_image_x, image_y))
+				next_image_x += item_image.width
+				actual_width = max(actual_width, next_image_x)
 			next_line_y = box_end
+
+		#Uneven images can result in calculating too much space to the side
+		image = image.crop((0, 0, actual_width, next_line_y))
 
 		background = generate_background(image.width, image.height)
 		background.paste(image, mask=image)
 		return background
 	
+class TierList(BaseTierList[T]):
+	"""Default implementation of TierList that just displays text as images"""
+
+	#Default size of load_default 10, so that sucks and we won't do that
+	_default_font = ImageFont.load_default(20)
+	_reg = re.compile(r'\s+?(?=\b\w{5,})') #Space followed by at least 5-letter word
+	
+	@staticmethod
+	def get_item_image(item: T) -> Image.Image:
+		text = getattr(item, 'name', str(item))
+		if ' ' in text:
+			text = TierList._reg.sub('\n', text)
+			width, height = ImageDraw(Image.new('1', (1, 1))).multiline_textbbox((0, 0), text, font=TierList._default_font)[2:]
+		else:
+			width, height = TierList._default_font.getbbox(text)[2:]
+		image = Image.new('RGBA', (width + 1, height + 1))
+		draw = ImageDraw(image)
+		draw.multiline_text((0,0), text, font=TierList._default_font, align='center')
+		return image
+	
+class TextBoxTierList(TierList[T]):
+	"""Pads out the images from the default implementation of get_item_image"""
+
+	@cached_property
+	def images(self) -> Mapping[T, Image.Image]:
+		unscaled = super().images
+		max_height = max(im.height for im in unscaled.values())
+		max_width = max(im.width for im in unscaled.values())
+		return {item: draw_box(pad_image(image,max_width + 2, max_height + 2, (0, 0, 0, 0), True)) for item, image in unscaled.items()}
+
 class CharacterTierList(BaseTierList[Character]):
 
 	@staticmethod
@@ -240,7 +294,9 @@ class CharacterTierList(BaseTierList[Character]):
 			square_size = max_dim, max_dim
 			a = numpy.array(first_image.resize(square_size))
 			b = numpy.array(second_image.resize(square_size))
-			return Image.fromarray(numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2) + numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)).resize(orig_size)
+			triu = numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2)
+			tril = numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)
+			return Image.fromarray(triu + tril).resize(orig_size)
 
 		#Just merge them together if we have a combined character with 3 or more	
 		images = [numpy.array(CharacterTierList.get_item_image(char)) for char in character.chars]
@@ -261,7 +317,11 @@ def main() -> None:
 	tierlist = CharacterTierList(scores, 7)
 	print(tierlist.tiers.inertia, tierlist.tiers.kmeans_iterations, tierlist.tiers.tiers.nunique(), len(tierlist.tiers.centroids))
 	print(tierlist.tiers.centroids)
-	tierlist.to_image('Spectral').show()
+	print(tierlist.to_text())
+
+	players = [p for p in Elo.for_game('SSBU', 'ACT') if p.is_active]
+	listy = TextBoxTierList([TieredItem(player.player, player.elo) for player in players])
+	listy.to_image('hsv').show()
 
 if __name__ == '__main__':
 	main()
