@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import itertools
 import re
 import warnings
 from abc import ABC, abstractmethod
@@ -141,19 +142,35 @@ class BaseTierList(Generic[T], ABC):
 		self.data['rank'] = numpy.arange(1, self.data.index.size + 1)
 
 		self.tiers = _get_clusters(self.data['score'], num_tiers)
+		self.num_tiers = len(
+			self.tiers.centroids
+		)  # Might not be the same as num_tiers, esp if num_tiers is 'auto'
 		self.data['tier'] = self.tiers.tiers
 
 		self.append_minmax_to_tier_titles = append_minmax_to_tier_titles
 		self.score_formatter = score_formatter
-		tier_letters = 'SABCDEFGHIJKLZ'
 		# TODO: Option to provide existing tiers (would need to calculate centroids manually I guess)
 		# TODO: Option to provide custom images
-		self.tier_names: Mapping[int, str] = dict(enumerate(tier_letters))
+		self.tier_names = self.default_tier_names(self.num_tiers)
+
+	@staticmethod
+	def default_tier_names(length: int) -> Mapping[int, str]:
+		if length == 2:
+			return {0: 'Good', 1: 'Bad'}
+		if length == 3:
+			return {0: 'Good', 1: 'Okay', 2: 'Bad'}
+		if length == 6:
+			# Just think it looks a bit weird to have it end at E tier
+			return dict(enumerate('SABCDF'))
+		tier_letters = list('SABCDEFGHIJKLMNOPQRSTUVXY'[:length])
+		if length > 9:
+			# Once you go past H it looks weird, so have the last one be Z
+			tier_letters[-1] = 'Z'
+		return dict(enumerate(tier_letters))
 
 	def to_text(self) -> str:
-		lines: list[str] = []
-		for tier_number, group in self._groupby:
-			lines.extend(
+		return '\n'.join(
+			itertools.chain.from_iterable(
 				(
 					'=' * 20,
 					self.displayed_tier_text(tier_number, group),
@@ -161,8 +178,9 @@ class BaseTierList(Generic[T], ABC):
 					*(f'{row.rank}: {row.item}' for row in group.itertuples()),
 					'',
 				)
+				for tier_number, group in self._groupby
 			)
-		return '\n'.join(lines)
+		)
 
 	@cached_property
 	def _groupby(self) -> 'DataFrameGroupBy[int]':
