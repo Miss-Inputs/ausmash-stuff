@@ -47,13 +47,22 @@ def main() -> None:
 		[TieredItem(row.Index, row.mean) for row in df.itertuples()],
 		append_minmax_to_tier_titles=True,
 		score_formatter='.4g',
+		scale_factor=3,
 	)
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
 	)
 
 	tl = CharacterTierList(
-		list(starmap(TieredItem, zip(sorted(df.index, key=lambda char: char.name), numpy.linspace(1, 0, df.index.size)))),
+		list(
+			starmap(
+				TieredItem,
+				zip(
+					sorted(df.index, key=lambda char: char.name),
+					numpy.linspace(1, 0, df.index.size),
+				),
+			)
+		),
 		append_minmax_to_tier_titles=False,
 		score_formatter='%',
 	)

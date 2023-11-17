@@ -12,7 +12,7 @@ import numpy
 import pandas
 import requests
 from matplotlib import pyplot  # just for colour maps lol
-from PIL import Image, ImageFilter, ImageFont
+from PIL import Image, ImageFilter, ImageFont, ImageOps
 from PIL.ImageDraw import ImageDraw
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
@@ -191,9 +191,8 @@ class BaseTierList(Generic[T], ABC):
 			return f'{text} ({min_:{self.score_formatter}} to {max_:{self.score_formatter}})'
 		return text
 
-	@staticmethod
 	@abstractmethod
-	def get_item_image(item: T) -> Image.Image:
+	def get_item_image(self, item: T) -> Image.Image:
 		...
 
 	@cached_property
@@ -335,8 +334,7 @@ class TierList(BaseTierList[T]):
 	_default_font = ImageFont.load_default(20)
 	_reg = re.compile(r'\s+?(?=\b\w{5,})')  # Space followed by at least 5-letter word
 
-	@staticmethod
-	def get_item_image(item: T) -> Image.Image:
+	def get_item_image(self, item: T) -> Image.Image:
 		text = getattr(item, 'name', str(item))
 		if ' ' in text:
 			text = TierList._reg.sub('\n', text)
@@ -370,24 +368,36 @@ class TextBoxTierList(TierList[T]):
 
 
 class CharacterTierList(BaseTierList[Character]):
-	@staticmethod
-	def get_item_image(item: Character) -> Image.Image:
+	def __init__(
+		self,
+		items: Iterable[TieredItem[Character]],
+		num_tiers: int | Literal['auto'] = 7,
+		append_minmax_to_tier_titles: bool = False,
+		score_formatter: str = '',
+		scale_factor: float | None = None,
+	) -> None:
+		self.scale_factor = scale_factor
+		super().__init__(
+			items, num_tiers, append_minmax_to_tier_titles, score_formatter
+		)
+
+	def get_item_image(self, item: Character) -> Image.Image:
 		if isinstance(item, CombinedCharacter):
-			return CharacterTierList.get_combined_char_image(item)
+			return self.get_combined_char_image(item)
 		url = item.character_select_screen_pic_url
 		response = requests.get(url, stream=True, timeout=10)
 		response.raise_for_status()
 		image = Image.open(response.raw)
-
+		if self.scale_factor:
+			image = ImageOps.scale(image, self.scale_factor)
 		return image
 
-	@staticmethod
-	def get_combined_char_image(character: CombinedCharacter) -> Image.Image:
+	def get_combined_char_image(self, character: CombinedCharacter) -> Image.Image:
 		if len(character.chars) == 2:
 			# Divvy it up into two diagonally, I dunno how to make it look the least shite
 			first, second = character.chars
-			first_image = CharacterTierList.get_item_image(first)
-			second_image = CharacterTierList.get_item_image(second)
+			first_image = self.get_item_image(first)
+			second_image = self.get_item_image(second)
 			if first_image.size != second_image.size:
 				second_image = second_image.resize(first_image.size)
 			# numpy.triu/tril won't work nicely on non-square rectangles
