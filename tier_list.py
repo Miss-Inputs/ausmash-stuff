@@ -4,7 +4,7 @@ import itertools
 import re
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Generic, Literal, NamedTuple, TypeVar
@@ -122,7 +122,8 @@ T = TypeVar('T')
 class TieredItem(Generic[T]):
 	"""An item that has a score associated with it used for ranking.
 
-	item should not be None, and score should be a higher number for better items."""
+	item should not be None, and score should be a higher number for better items.
+	"""
 
 	item: T
 	score: float
@@ -132,26 +133,36 @@ class BaseTierList(Generic[T], ABC):
 	def __init__(
 		self,
 		items: Iterable[TieredItem[T]],
-		num_tiers: int | Literal['auto'] = 7,
+		tiers: int | Literal['auto'] | Sequence[int] = 7,
+		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
 	) -> None:
-		""":param num_tiers: Number of tiers to separate scores into. If "auto", finds the biggest number of tiers before it would stop making sense, but that often doesn't work very well and is slower to calculate, so don't bother."""
+		""":param tiers: Number of tiers to separate scores into. If "auto", finds the biggest number of tiers before it would stop making sense, but that often doesn't work very well and is slower to calculate, so don't bother. If a sequence, pre-computed tiers"""
 		self.data = pandas.DataFrame(list(items), columns=['item', 'score'])
 		self.data.sort_values('score', ascending=False, inplace=True)
 		self.data['rank'] = numpy.arange(1, self.data.index.size + 1)
 
-		self.tiers = _get_clusters(self.data['score'], num_tiers)
-		self.num_tiers = len(
-			self.tiers.centroids
-		)  # Might not be the same as num_tiers, esp if num_tiers is 'auto'
-		self.data['tier'] = self.tiers.tiers
+		if isinstance(tiers, Sequence) and tiers != 'auto':
+			self.data['tier'] = tiers
+			self.num_tiers = self._groupby.ngroups
+			centroids = self._groupby['score'].mean().to_dict()
+			self.tiers = Tiers(self.data['tier'], centroids, 0, 0)
+		else:
+			self.tiers = _get_clusters(self.data['score'], tiers)
+			self.num_tiers = len(
+				self.tiers.centroids
+			)  # Might not be the same as num_tiers, esp if num_tiers is 'auto'
+			self.data['tier'] = self.tiers.tiers
 
 		self.append_minmax_to_tier_titles = append_minmax_to_tier_titles
 		self.score_formatter = score_formatter
-		# TODO: Option to provide existing tiers (would need to calculate centroids manually I guess)
 		# TODO: Option to provide custom images
-		self.tier_names = self.default_tier_names(self.num_tiers)
+		if not tier_names:
+			tier_names = self.default_tier_names(self.num_tiers)
+		if isinstance(tier_names, Sequence):
+			tier_names = dict(enumerate(tier_names))
+		self.tier_names = tier_names
 
 	@staticmethod
 	def default_tier_names(length: int) -> Mapping[int, str]:
@@ -162,9 +173,10 @@ class BaseTierList(Generic[T], ABC):
 		if length == 6:
 			# Just think it looks a bit weird to have it end at E tier
 			return dict(enumerate('SABCDF'))
-		tier_letters = list('SABCDEFGHIJKLMNOPQRSTUVXY'[:length])
+		tier_letters: Sequence[str] = 'SABCDEFGHIJKLMNOPQRSTUVXY'[:length]
 		if length > 9:
 			# Once you go past H it looks weird, so have the last one be Z
+			tier_letters = list(tier_letters)
 			tier_letters[-1] = 'Z'
 		return dict(enumerate(tier_letters))
 
@@ -389,7 +401,8 @@ class CharacterTierList(BaseTierList[Character]):
 	def __init__(
 		self,
 		items: Iterable[TieredItem[Character]],
-		num_tiers: int | Literal['auto'] = 7,
+		tiers: int | Literal['auto'] | Sequence[int] = 7,
+		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
 		scale_factor: float | None = None,
@@ -398,7 +411,7 @@ class CharacterTierList(BaseTierList[Character]):
 		self.scale_factor = scale_factor
 		self.resampling = resampling
 		super().__init__(
-			items, num_tiers, append_minmax_to_tier_titles, score_formatter
+			items, tiers, tier_names, append_minmax_to_tier_titles, score_formatter
 		)
 
 	def get_item_image(self, item: Character) -> Image.Image:
@@ -467,6 +480,21 @@ def main() -> None:
 		score_formatter=',',
 	)
 	listy.to_image('rainbow_r').show()
+
+	test_list = TextBoxTierList(
+		[
+			TieredItem('🐈', 10),
+			TieredItem('Good Thing', 7.5),
+			TieredItem('okay', 6),
+			TieredItem('meh', 4),
+			TieredItem('Windows Vista', -1),
+		],
+		[0, 0, 1, 1, 2],
+		tier_names=['pretty cool', 'alright', 'bleh'],
+		append_minmax_to_tier_titles=True,
+	)
+	print(test_list.to_text())
+	test_list.to_image().show()
 
 
 if __name__ == '__main__':
