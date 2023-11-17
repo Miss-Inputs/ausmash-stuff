@@ -375,8 +375,10 @@ class CharacterTierList(BaseTierList[Character]):
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
 		scale_factor: float | None = None,
+		resampling: Image.Resampling = Image.Resampling.LANCZOS,
 	) -> None:
 		self.scale_factor = scale_factor
+		self.resampling = resampling
 		super().__init__(
 			items, num_tiers, append_minmax_to_tier_titles, score_formatter
 		)
@@ -389,7 +391,7 @@ class CharacterTierList(BaseTierList[Character]):
 		response.raise_for_status()
 		image = Image.open(response.raw)
 		if self.scale_factor:
-			image = ImageOps.scale(image, self.scale_factor)
+			image = ImageOps.scale(image, self.scale_factor, self.resampling)
 		return image
 
 	def get_combined_char_image(self, character: CombinedCharacter) -> Image.Image:
