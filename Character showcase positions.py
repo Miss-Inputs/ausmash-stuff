@@ -16,6 +16,7 @@ def main() -> None:
 	]
 
 	char_ranks: dict[ausmash.Character, list[float]] = {}
+	act_char_ranks: dict[ausmash.Character, list[float]] = {}
 
 	for ranking in rankings:
 		size = len(ranking.ranks) + 1
@@ -23,12 +24,17 @@ def main() -> None:
 		for rank in ranking.ranks:
 			for character in rank.characters:
 				character = ausmash.combine_echo_fighters(character)
-				char_ranks.setdefault(character, []).append(1 - (rank.rank / size))
+				score = 1 - (rank.rank / size)
+				char_ranks.setdefault(character, []).append(score)
+				if ranking.region and ranking.region.short_name == 'ACT':
+					act_char_ranks.setdefault(character, []).append(score)
 				chars_in_ranking.add(character)
 		for character in ausmash.Character.characters_in_game(ranking.game):
 			character = ausmash.combine_echo_fighters(character)
 			if character not in chars_in_ranking:
 				char_ranks.setdefault(character, []).append(0)
+				if ranking.region and ranking.region.short_name == 'ACT':
+					act_char_ranks.setdefault(character, []).append(0)
 
 	rows = [
 		[
@@ -54,14 +60,26 @@ def main() -> None:
 	)
 
 	tl = CharacterTierList(
-		list(
-			starmap(
-				TieredItem,
-				zip(
-					sorted(df.index, key=lambda char: char.name),
-					numpy.linspace(1, 0, df.index.size),
-				),
-			)
+		[
+			TieredItem(char, numpy.mean(scores))
+			for char, scores in act_char_ranks.items()
+			if any(scores)
+		],
+		append_minmax_to_tier_titles=True,
+		score_formatter='.4g',
+		scale_factor=3,
+	)
+	tl.to_image('Spectral').save(
+		'/media/Shared/Datasets/Smash/Character showcase positions ACT.png'
+	)
+
+	tl = CharacterTierList(
+		starmap(
+			TieredItem,
+			zip(
+				sorted(df.index, key=lambda char: char.name),
+				numpy.linspace(1, 0, df.index.size),
+			),
 		),
 		append_minmax_to_tier_titles=False,
 		score_formatter='%',
