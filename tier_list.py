@@ -196,6 +196,42 @@ def combine_images_diagonally(
 	return Image.fromarray(upper_right + lower_left).resize(orig_size)
 
 
+def draw_centred_textbox(
+	draw: ImageDraw,
+	background_colour: tuple[float, float, float, float],
+	left: int,
+	top: int,
+	right: int,
+	bottom: int,
+	text: str,
+	font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
+):
+	colour_as_int = tuple(int(v * 255) for v in background_colour)
+	# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
+	# Well colorsys.rgb_to_yiv would also potentially work
+	luminance = (
+		(background_colour[0] * 0.2126)
+		+ (background_colour[1] * 0.7152)
+		+ (background_colour[2] * 0.0722)
+	)
+	text_colour = 'white' if luminance <= 0.5 else 'black'
+	draw.rectangle((left, top, left, bottom - 1), fill='black')
+	draw.rectangle((right, top, right, bottom - 1), fill='black')
+	draw.rectangle(
+		(left + 1, top, right - 1, bottom - 1),
+		fill=colour_as_int,
+		outline='black',
+		width=1,
+	)
+	draw.text(
+		((left + right) // 2, (top + bottom) // 2),
+		text,
+		anchor='mm',
+		fill=text_colour,
+		font=font,
+	)
+
+
 T = TypeVar('T')
 
 
@@ -369,30 +405,7 @@ class BaseTierList(Generic[T], ABC):
 				draw = ImageDraw(image)
 
 			colour = colourmap(self.scaled_centroids[tier_number])
-			colour_as_int = tuple(int(v * 255) for v in colour)
-			# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
-			# Well colorsys.rgb_to_yiv would also potentially work
-			luminance = (
-				(colour[0] * 0.2126) + (colour[1] * 0.7152) + (colour[2] * 0.0722)
-			)
-			text_colour = 'white' if luminance <= 0.5 else 'black'
-			draw.rectangle((0, next_line_y, 0, box_end - 1), fill='black')
-			draw.rectangle(
-				(textbox_width, next_line_y, textbox_width, box_end - 1), fill='black'
-			)
-			draw.rectangle(
-				(1, next_line_y, textbox_width - 1, box_end - 1),
-				fill=colour_as_int,
-				outline='black',
-				width=1,
-			)
-			draw.text(
-				(textbox_width / 2, (next_line_y + box_end) / 2),
-				tier_text,
-				anchor='mm',
-				fill=text_colour,
-				font=font,
-			)
+			draw_centred_textbox(draw, colour, 0, next_line_y, textbox_width, box_end, tier_text, font)
 
 			next_image_x = textbox_width + 1  # Account for border
 			for i, item in enumerate(group['item']):
@@ -505,10 +518,7 @@ class CharacterTierList(BaseTierList[Character]):
 			return combine_images_diagonally(first_image, second_image)
 
 		# Just merge them together if we have a combined character with 3 or more
-		images = [
-			numpy.array(self.get_item_image(char))
-			for char in character.chars
-		]
+		images = [numpy.array(self.get_item_image(char)) for char in character.chars]
 		return Image.fromarray(numpy.mean(images, axis=(0)).astype('uint8'))
 
 

@@ -58,6 +58,7 @@ def main() -> None:
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
 	)
+	print(tl.to_text())
 
 	tl = CharacterTierList(
 		[
@@ -72,6 +73,7 @@ def main() -> None:
 	tl.to_image('Spectral').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions ACT.png'
 	)
+	print(tl.to_text())
 
 	tl = CharacterTierList(
 		starmap(
