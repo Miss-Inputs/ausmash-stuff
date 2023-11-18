@@ -79,6 +79,7 @@ def main() -> None:
 			zip(
 				sorted(df.index, key=lambda char: char.name),
 				numpy.linspace(1, 0, df.index.size),
+				strict=True,
 			),
 		),
 		append_minmax_to_tier_titles=False,

@@ -23,6 +23,7 @@ from ausmash import Character, Elo, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
 
 if TYPE_CHECKING:
+	from matplotlib.colors import Colormap
 	from pandas.core.groupby.generic import DataFrameGroupBy
 
 
@@ -78,18 +79,17 @@ def _get_clusters(
 def generate_background(width: int, height: int) -> Image.Image:
 	"""Generate some nice pretty rainbow clouds"""
 	rng = numpy.random.default_rng()
-	noise = rng.integers(0, (128, 128, 128), (height, width, 3), 'uint8', True)
+	noise = rng.integers(0, (128, 128, 128), (height, width, 3), 'uint8', endpoint=True)
 	# Could also have a fourth dim with max=255 and then layer multiple transparent clouds on top of each other
-	image = (
+	return (
 		Image.fromarray(noise)
 		.filter(ImageFilter.ModeFilter(100))
 		.filter(ImageFilter.GaussianBlur(50))
 	)
-	return image
 
 
 def pad_image(
-	image: Image.Image, width: int, height: int, colour: Any, centred: bool = False
+	image: Image.Image, width: int, height: int, colour: Any, *, centred: bool = False
 ) -> Image.Image:
 	"""Return expanded version of image with blank space to ensure a certain size.
 
@@ -115,6 +115,71 @@ def draw_box(image: Image.Image, colour: Any = 'black', width: int = 2) -> Image
 	return image
 
 
+def fit_font(
+	font: ImageFont.FreeTypeFont | None,
+	width: int | None,
+	height: int | None,
+	text: str | Iterable[str],
+	vertical_padding: int = 10,
+	horizontal_padding: int = 10,
+) -> tuple[ImageFont.FreeTypeFont, int, int]:
+	"""Find the largest font that will fit into a box of a given size, or just height or width to also find how big the other dimension of the box needs to be
+
+	Returns the font, height, or width
+
+	:param font: Font to use, or load the default font if None
+	:param width: Max width in pixels or None
+	:param height: Max height in pixels or None
+	:param text: Text to measure, or iterable of texts to find what fits all of them
+	:param vertical_padding: Amount of vertical space in pixels to add to the box
+	:param horizontal_padding: Amount of horizontal space in pixels to add to the box"""
+	# Find the largest font size we can use inside the tier name box to fit the available height
+	# font_size is points and not pixels, but it'll do as a starting point
+	font_size = font.size if font else (100 if height is None else height * 2)
+
+	if isinstance(text, str):
+		size: None | tuple[int, int] = None  # right, bottom
+		while (
+			size is None
+			or (
+				(height is None or (size[1] + vertical_padding) > height)
+				and (width is None or (size[0] + horizontal_padding) > width)
+			)
+		) and font_size > 0:
+			if isinstance(font, ImageFont.FreeTypeFont):
+				font = font.font_variant(size=font_size)
+			else:
+				default_font = ImageFont.load_default(font_size)
+				if not isinstance(default_font, ImageFont.FreeTypeFont):
+					raise RuntimeError('Uh oh, you need FreeType or Pillow >= 10.1.10')  # noqa: TRY004
+				font = default_font
+			size = font.getbbox(text)[2:]
+			font_size -= 1
+		assert font, 'how did my font end up being None :('
+		assert size, 'meowwww'  # FIXME I think this can happen if max image size is <= the smallest size of the default font? (I think even if font_size = 0 it's not smaller than like 8 or whichever)
+		return font, size[0] + horizontal_padding, size[1] + vertical_padding
+
+	out_width = 0
+	out_height = 0
+	out_font = font
+	for t in text:
+		t_font, t_width, t_height = fit_font(
+			font, width, height, t, vertical_padding, horizontal_padding
+		)
+		if t_width > out_width:
+			out_width = t_width
+		if t_height > out_height:
+			out_height = t_height
+		out_font = (
+			t_font if out_font is None or t_font.size < out_font.size else out_font
+		)
+	if not out_font:
+		raise ValueError(
+			'out_font ended up being None, maybe you provided an empty iterable for text'
+		)
+	return out_font, out_width, out_height
+
+
 T = TypeVar('T')
 
 
@@ -135,6 +200,7 @@ class BaseTierList(Generic[T], ABC):
 		items: Iterable[TieredItem[T]],
 		tiers: int | Literal['auto'] | Sequence[int] = 7,
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
+		*,
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
 	) -> None:
@@ -238,7 +304,9 @@ class BaseTierList(Generic[T], ABC):
 		return {item: self.get_item_image(item) for item in self.data['item']}
 
 	def to_image(
-		self, colourmap_name: str | None = None, max_images_per_row: int | None = 8
+		self,
+		colourmap: 'str | Colormap | None' = None,
+		max_images_per_row: int | None = 8,
 	) -> Image.Image:
 		"""Render the tier list as an image.
 
@@ -247,33 +315,13 @@ class BaseTierList(Generic[T], ABC):
 		max_image_height = max(im.height for im in self.images.values())
 		tier_texts = {i: self.displayed_tier_text(i) for i in self._tier_texts}
 
-		cmap = pyplot.get_cmap(colourmap_name)
+		if colourmap is None or isinstance(colourmap, str):
+			colourmap = pyplot.get_cmap(colourmap)
 
-		font: ImageFont.ImageFont | ImageFont.FreeTypeFont | None = None
-		textbox_width = 0
-
-		vertical_padding = 10
-		horizontal_padding = 10
-		# Find the largest font size we can use inside the tier name box to fit the available height
-		# font_size is points and not pixels, but it'll do as a starting point
-		font_size = max_image_height * 2
-		for text in tier_texts.values():
-			size: None | tuple[int, int, int, int] = None
-			while (
-				size is None or (size[3] + vertical_padding) > max_image_height
-			) and font_size > 0:
-				font = (
-					font.font_variant(size=font_size)
-					if isinstance(font, ImageFont.FreeTypeFont)
-					else ImageFont.load_default(font_size)
-				)
-				size = font.getbbox(text)
-				font_size -= 1
-			assert font, 'how did my font end up being None :('
-			assert size, 'meowwww'  # FIXME I think this can happen if max image size is <= the smallest size of the default font? (I think even if font_size = 0 it's not smaller than like 8 or whichever)
-			length = size[2] + horizontal_padding
-			if length > textbox_width:
-				textbox_width = length
+		font: ImageFont.FreeTypeFont | None = None
+		font, textbox_width, _ = fit_font(
+			font, None, max_image_height, tier_texts.values()
+		)
 
 		height = self._groupby.ngroups * max_image_height
 		if not max_images_per_row:
@@ -304,7 +352,7 @@ class BaseTierList(Generic[T], ABC):
 				image = pad_image(image, textbox_width, image.height, trans)
 				draw = ImageDraw(image)
 
-			colour = cmap(self.scaled_centroids[tier_number])
+			colour = colourmap(self.scaled_centroids[tier_number])
 			colour_as_int = tuple(int(v * 255) for v in colour)
 			# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
 			# Well colorsys.rgb_to_yiv would also potentially work
@@ -391,7 +439,7 @@ class TextBoxTierList(TierList[T]):
 		max_width = max(im.width for im in unscaled.values())
 		return {
 			item: draw_box(
-				pad_image(image, max_width + 2, max_height + 2, (0, 0, 0, 0), True)
+				pad_image(image, max_width + 2, max_height + 2, (0, 0, 0, 0), centred=True)
 			)
 			for item, image in unscaled.items()
 		}
@@ -403,6 +451,7 @@ class CharacterTierList(BaseTierList[Character]):
 		items: Iterable[TieredItem[Character]],
 		tiers: int | Literal['auto'] | Sequence[int] = 7,
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
+		*,
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
 		scale_factor: float | None = None,
@@ -411,7 +460,7 @@ class CharacterTierList(BaseTierList[Character]):
 		self.scale_factor = scale_factor
 		self.resampling = resampling
 		super().__init__(
-			items, tiers, tier_names, append_minmax_to_tier_titles, score_formatter
+			items, tiers, tier_names, append_minmax_to_tier_titles=append_minmax_to_tier_titles, score_formatter=score_formatter
 		)
 
 	def get_item_image(self, item: Character) -> Image.Image:
