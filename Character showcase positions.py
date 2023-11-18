@@ -5,6 +5,7 @@ from itertools import starmap
 import ausmash
 import numpy
 import pandas
+from matplotlib import pyplot
 
 from tier_list import CharacterTierList, TieredItem
 
@@ -49,13 +50,15 @@ def main() -> None:
 	df = pandas.DataFrame(rows, columns=['char', 'count', 'sum', 'mean', 'max'])
 	df.set_index('char', inplace=True)
 
-	tl = CharacterTierList(
-		[TieredItem(row.Index, row.mean) for row in df.itertuples()],
+	spectral = pyplot.get_cmap('Spectral')
+
+	tl = CharacterTierList.from_series(
+		df['mean'],
 		append_minmax_to_tier_titles=True,
 		score_formatter='.4g',
 		scale_factor=3,
 	)
-	tl.to_image('Spectral').save(
+	tl.to_image(spectral).save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
 	)
 	print(tl.to_text())
@@ -70,7 +73,7 @@ def main() -> None:
 		score_formatter='.4g',
 		scale_factor=3,
 	)
-	tl.to_image('Spectral').save(
+	tl.to_image(spectral).save(
 		'/media/Shared/Datasets/Smash/Character showcase positions ACT.png'
 	)
 	print(tl.to_text())
@@ -87,7 +90,7 @@ def main() -> None:
 		append_minmax_to_tier_titles=False,
 		score_formatter='%',
 	)
-	tl.to_image('Spectral').save(
+	tl.to_image(spectral).save(
 		'/media/Shared/Datasets/Smash/Characters tiered alphabetically.png'
 	)
 
@@ -96,7 +99,7 @@ def main() -> None:
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)
-	tl.to_image('Spectral').save(
+	tl.to_image(spectral).save(
 		'/media/Shared/Datasets/Smash/Characters tiered by name length.png'
 	)
 

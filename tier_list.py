@@ -6,7 +6,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cache, cached_property
 from typing import (
 	TYPE_CHECKING,
 	Any,
@@ -16,7 +16,6 @@ from typing import (
 	SupportsFloat,
 	TypeVar,
 )
-from typing_extensions import Self
 
 import numpy
 import pandas
@@ -29,6 +28,7 @@ from PIL.ImageDraw import ImageDraw
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
+from typing_extensions import Self
 
 if TYPE_CHECKING:
 	from matplotlib.colors import Colormap
@@ -238,6 +238,14 @@ def draw_centred_textbox(
 		fill=text_colour,
 		font=font,
 	)
+
+
+@cache
+def get_character_image(char: Character) -> Image.Image:
+	url = char.character_select_screen_pic_url
+	response = requests.get(url, stream=True, timeout=10)
+	response.raise_for_status()
+	return Image.open(response.raw)
 
 
 T = TypeVar('T')
@@ -527,10 +535,7 @@ class CharacterTierList(BaseTierList[Character]):
 	def get_item_image(self, item: Character) -> Image.Image:
 		if isinstance(item, CombinedCharacter):
 			return self.get_combined_char_image(item)
-		url = item.character_select_screen_pic_url
-		response = requests.get(url, stream=True, timeout=10)
-		response.raise_for_status()
-		image = Image.open(response.raw)
+		image = get_character_image(item)
 		if self.scale_factor:
 			image = ImageOps.scale(image, self.scale_factor, self.resampling)
 		return image
