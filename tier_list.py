@@ -180,6 +180,22 @@ def fit_font(
 	return out_font, out_width, out_height
 
 
+def combine_images_diagonally(
+	first_image: Image.Image, second_image: Image.Image
+) -> Image.Image:
+	if first_image.size != second_image.size:
+		second_image = second_image.resize(first_image.size)
+	# numpy.triu/tril won't work nicely on non-square rectangles
+	orig_size = first_image.size
+	max_dim = max(orig_size)
+	square_size = max_dim, max_dim
+	a = numpy.array(first_image.resize(square_size))
+	b = numpy.array(second_image.resize(square_size))
+	upper_right = numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2)
+	lower_left = numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)
+	return Image.fromarray(upper_right + lower_left).resize(orig_size)
+
+
 T = TypeVar('T')
 
 
@@ -439,7 +455,9 @@ class TextBoxTierList(TierList[T]):
 		max_width = max(im.width for im in unscaled.values())
 		return {
 			item: draw_box(
-				pad_image(image, max_width + 2, max_height + 2, (0, 0, 0, 0), centred=True)
+				pad_image(
+					image, max_width + 2, max_height + 2, (0, 0, 0, 0), centred=True
+				)
 			)
 			for item, image in unscaled.items()
 		}
@@ -460,7 +478,11 @@ class CharacterTierList(BaseTierList[Character]):
 		self.scale_factor = scale_factor
 		self.resampling = resampling
 		super().__init__(
-			items, tiers, tier_names, append_minmax_to_tier_titles=append_minmax_to_tier_titles, score_formatter=score_formatter
+			items,
+			tiers,
+			tier_names,
+			append_minmax_to_tier_titles=append_minmax_to_tier_titles,
+			score_formatter=score_formatter,
 		)
 
 	def get_item_image(self, item: Character) -> Image.Image:
@@ -480,21 +502,11 @@ class CharacterTierList(BaseTierList[Character]):
 			first, second = character.chars
 			first_image = self.get_item_image(first)
 			second_image = self.get_item_image(second)
-			if first_image.size != second_image.size:
-				second_image = second_image.resize(first_image.size)
-			# numpy.triu/tril won't work nicely on non-square rectangles
-			orig_size = first_image.size
-			max_dim = max(orig_size)
-			square_size = max_dim, max_dim
-			a = numpy.array(first_image.resize(square_size))
-			b = numpy.array(second_image.resize(square_size))
-			upper_right = numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2)
-			lower_left = numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)
-			return Image.fromarray(upper_right + lower_left).resize(orig_size)
+			return combine_images_diagonally(first_image, second_image)
 
 		# Just merge them together if we have a combined character with 3 or more
 		images = [
-			numpy.array(CharacterTierList.get_item_image(char))
+			numpy.array(self.get_item_image(char))
 			for char in character.chars
 		]
 		return Image.fromarray(numpy.mean(images, axis=(0)).astype('uint8'))
