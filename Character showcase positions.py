@@ -2,10 +2,10 @@
 
 from itertools import starmap
 
+import ausmash
 import numpy
 import pandas
 
-import ausmash
 from tier_list import CharacterTierList, TieredItem
 
 

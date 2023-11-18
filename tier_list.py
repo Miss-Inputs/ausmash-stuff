@@ -7,20 +7,28 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Generic, Literal, NamedTuple, TypeVar
+from typing import (
+	TYPE_CHECKING,
+	Any,
+	Generic,
+	Literal,
+	NamedTuple,
+	SupportsFloat,
+	TypeVar,
+)
+from typing_extensions import Self
 
 import numpy
 import pandas
 import requests
+from ausmash import Character, Elo, combine_echo_fighters
+from ausmash.models.character import CombinedCharacter
 from matplotlib import pyplot  # just for colour maps lol
 from PIL import Image, ImageFilter, ImageFont, ImageOps
 from PIL.ImageDraw import ImageDraw
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
-
-from ausmash import Character, Elo, combine_echo_fighters
-from ausmash.models.character import CombinedCharacter
 
 if TYPE_CHECKING:
 	from matplotlib.colors import Colormap
@@ -243,7 +251,7 @@ class TieredItem(Generic[T]):
 	"""
 
 	item: T
-	score: float
+	score: SupportsFloat
 
 
 class BaseTierList(Generic[T], ABC):
@@ -281,6 +289,20 @@ class BaseTierList(Generic[T], ABC):
 		if isinstance(tier_names, Sequence):
 			tier_names = dict(enumerate(tier_names))
 		self.tier_names = tier_names
+
+	@classmethod
+	def from_series(
+		cls,
+		s: 'pandas.Series[float]',
+		tiers: int | Sequence[int] | Literal['auto'] = 7,
+		tier_names: Sequence[str] | Mapping[int, str] | None = None,
+		**kwargs,
+	) -> Self:
+		"""Create a new tier list from scores in a pandas Series.
+		Assumes s is indexed by the items to be tiered."""
+		return cls(
+			itertools.starmap(TieredItem, s.items()), tiers, tier_names, **kwargs
+		)
 
 	@staticmethod
 	def default_tier_names(length: int) -> Mapping[int, str]:
@@ -327,7 +349,9 @@ class BaseTierList(Generic[T], ABC):
 	def displayed_tier_text(
 		self, tier_number: int, group: pandas.DataFrame | None = None
 	):
-		""":param group: If you are already iterating through ._groupby, you can pass each group so you don't have to call get_group"""
+		"""
+		:param tier_number: Tier number
+		:param group: If you are already iterating through ._groupby, you can pass each group so you don't have to call get_group"""
 		text = self._tier_texts[tier_number]
 		if self.append_minmax_to_tier_titles:
 			if group is None:
@@ -405,7 +429,9 @@ class BaseTierList(Generic[T], ABC):
 				draw = ImageDraw(image)
 
 			colour = colourmap(self.scaled_centroids[tier_number])
-			draw_centred_textbox(draw, colour, 0, next_line_y, textbox_width, box_end, tier_text, font)
+			draw_centred_textbox(
+				draw, colour, 0, next_line_y, textbox_width, box_end, tier_text, font
+			)
 
 			next_image_x = textbox_width + 1  # Account for border
 			for i, item in enumerate(group['item']):

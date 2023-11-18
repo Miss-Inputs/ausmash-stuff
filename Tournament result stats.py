@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+"""Generates a ranking of active players in a region based on tournament results, and stats and summaries of those tournament results.
+
+Active players are decided on who has attended enough events in the given season.
+Can output results cosnidering ACT locals only, majors only (where tournaments are considered majors on Ausmash, which is not checked, and may be inaccurate), "regionals" only (where a regional is considered to be any tournament that has players from at least 3 different regions in attendance).
+
+The ranking is based on giving a score to each player's result at each tournament based on how many rounds they went through, and using the mean of those scores per player.
+"""
+
 import logging
 import sys
 from argparse import ArgumentParser, BooleanOptionalAction
@@ -9,9 +17,6 @@ from pathlib import Path
 
 import pandas
 import scipy.stats
-from sklearn.cluster import KMeans
-from sklearn.metrics import calinski_harabasz_score
-
 from ausmash import (
 	Game,
 	Match,
@@ -23,13 +28,7 @@ from ausmash import (
 	rounds_from_victory,
 )
 
-__doc__ = """Generates a ranking of active players in a region based on tournament results, and stats and summaries of those tournament results.
-
-Active players are decided on who has attended enough events in the given season.
-Can output results cosnidering ACT locals only, majors only (where tournaments are considered majors on Ausmash, which is not checked, and may be inaccurate), "regionals" only (where a regional is considered to be any tournament that has players from at least 3 different regions in attendance).
-
-The ranking is based on giving a score to each player's result at each tournament based on how many rounds they went through, and using the mean of those scores per player.
-"""
+from tier_list import TextBoxTierList, BaseTierList
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -89,9 +88,10 @@ def _get_rows(
 	season_end: date | None = None,
 	event_size_to_count: int = 1,
 	excluded_series: Iterable[str] | None = None,
+	*,
 	redemption: bool = False,
-) -> dict[Player, dict[tuple[Tournament, str], int]]:
-	rows: dict[Player, dict[tuple[Tournament, str], int]] = {}
+) -> dict[Player, dict[tuple[Tournament, str], int | tuple[int, int]]]:
+	rows: dict[Player, dict[tuple[Tournament, str], int | tuple[int, int]]] = {}
 	for player in players:
 		results = (
 			get_redemption_bracket_results(
@@ -113,7 +113,7 @@ def _get_rows(
 			)
 		)
 
-		data: dict[tuple[Tournament, str], int] = {}
+		data: dict[tuple[Tournament, str], int | tuple[int, int]] = {}
 		for result in results:
 			player_matches_at_event = [
 				m for m in Match.matches_at_event(result.event) if player in m.players
@@ -148,83 +148,22 @@ def _get_rows(
 	return rows
 
 
-def cluster_into_tiers(mean_scores: pandas.Series) -> pandas.Series | None:
-	"""Uses K-means clustering to assign a tier to every row in mean_scores (which could also be another column instead), though assumes the rest of the frame is sorted that way"""
-	tier_letters = list('SABCDEFGHIJKLZ')
-	# kmeans = KMeans(n_init='auto', n_clusters=len(tier_letters))
-	best_k_means = None
-	best_score = -1
-	best_labels = None
-	X = mean_scores.values.reshape(-1, 1)
-	for n in range(3, min(len(tier_letters), mean_scores.size // 3)):
-		kmeans = KMeans(n_init='auto', n_clusters=n)
-		result = kmeans.fit_predict(X)
-		score = calinski_harabasz_score(X, kmeans.labels_)
-		if score > best_score:
-			best_score = score
-			best_k_means = kmeans
-			best_labels = result
-	if not best_k_means:
-		logger.warning(
-			'Could not find any value of n_clusters that works, no tiers for you'
-		)
-		return None
-
-	# This will produce a warning if number of players is less than the number of tiers, which can end up happening for majors only, for instance
-	raw_tiers = pandas.Series(best_labels, index=mean_scores.index)
-	# The numbers in raw_tiers are just random values for the sake of being distinct, we are already sorted by mean score, so have ascending tiers instead
-	mapping = {c: i for i, c in enumerate(raw_tiers.unique())}
-	tiers = raw_tiers.map(mapping)
-	# Could use this to determine how far away each tier is from another, to determine whether the first tier is S+ or S, the next one is A+ or A, etc
-	cluster_centres = (
-		pandas.Series(best_k_means.cluster_centers_.squeeze())
-		.rename(mapping)
-		.sort_index()
-	)
-	cluster_diffs = cluster_centres.diff(-1)
-	# logger.info('Tier cluster centres: %s', cluster_centres)
-	# logger.info('Tier cluster centres diff: %s', cluster_diffs)
-
-	next_letter_index = 0
-	tier_names = {}
-	used_plus = False
-	# plus_threshold = cluster_diffs.mean(skipna=True)
-	plus_threshold = mean_scores.max() / cluster_diffs.size
-	for i, diff in enumerate(cluster_diffs.head(-1)):
-		# TODO: Should have minus letters I guess, but I got too confuzzled
-		letter = tier_letters[next_letter_index]
-		# If not much more than the next one, put a + here, and the next one is just this letter without the + and not the next letter
-		if diff < plus_threshold:
-			# Unless we already just did
-			if used_plus:
-				letter = letter[0]
-				used_plus = False
-				next_letter_index += 1
-			else:
-				letter += '+'
-				used_plus = True
-		else:
-			next_letter_index += 1
-			used_plus = False
-		tier_names[i] = letter
-	# Hrm this doesn't really work in the case where number of players < number of tier letters, maybe should be checking length of cluster_centres instead
-	tier_names[cluster_diffs.size - 1] = tier_letters[next_letter_index]
-	# logger.info(tier_names)
-	return tiers.map({i: tier_names[i] for i in tiers.unique()})
-
 def expectile_nan(s: pandas.Series, alpha: float) -> float:
-	return scipy.stats.expectile(s.dropna(), alpha=alpha)
+	return float(scipy.stats.expectile(s.dropna(), alpha=alpha))
+
 
 def trimmean_nan(s: pandas.Series, proportion: float) -> float:
-	return scipy.stats.trim_mean(s.dropna(), proportion)
+	return float(scipy.stats.trim_mean(s.dropna(), proportion))
+
 
 def _get_stats(
 	scores: pandas.DataFrame,
 	placings: pandas.DataFrame,
 	events_to_count: int,
-	drop_zero_score: bool = False,
 	confidence_percent: float = 0.95,
 	sort_column: str | None = None,
+	*,
+	drop_zero_score: bool = False,
 ):
 	scores.dropna(how='all', inplace=True)
 	placings.dropna(how='all', inplace=True)
@@ -307,8 +246,8 @@ def _get_stats(
 		'% below mean': portion_below_mean,
 		'% below median': portion_below_median,
 		'% below midpoint': portion_below_midpoint,
-		'Most inlier': abs(zscores).idxmin(axis=1, skipna=True),
-		'Most outlier': abs(zscores).idxmax(axis=1, skipna=True),
+		'Most inlier': zscores.abs().idxmin(axis=1, skipna=True),
+		'Most outlier': zscores.abs().idxmax(axis=1, skipna=True),
 		'Standout performance': zscores.idxmax(
 			axis=1, skipna=True
 		),  # Usually the same as best tournament
@@ -320,9 +259,9 @@ def _get_stats(
 		'Skew': scores.skew(axis='columns', skipna=True),
 		'Range': maxes - mins,
 		'Midpoint': midpoint,
-		'Median absolute deviation': abs(scores.subtract(median, axis='index')).median(
-			axis='columns'
-		),
+		'Median absolute deviation': scores.subtract(median, axis='index')
+		.abs()
+		.median(axis='columns'),
 		'Interquartile range': scipy.stats.iqr(
 			scores.astype(float), axis=1, nan_policy='omit'
 		),  # Need nan instead of NAType
@@ -383,13 +322,6 @@ def _get_stats(
 	diff = df[sort_column].diff(-1)
 	df.insert(2, 'Difference to next', diff)
 
-	if df[sort_column].hasnans:
-		logger.warning('Refusing to add tiers, as there are nans in %s', sort_column)
-	else:
-		tiers = cluster_into_tiers(df[sort_column])
-		if tiers is not None:
-			df.insert(2, 'Tier', tiers)
-
 	return df.dropna(axis='columns', how='all')
 
 
@@ -407,6 +339,7 @@ def _output(
 	event_size_to_count: int,
 	excluded_series: Iterable[str],
 	minimum_events_to_count: int,
+	*,
 	drop_zero_score: bool,
 	output_dates: bool,
 	redemption: bool,
@@ -420,7 +353,7 @@ def _output(
 		season_end,
 		event_size_to_count,
 		excluded_series,
-		redemption,
+		redemption=redemption,
 	)
 
 	df = pandas.DataFrame.from_dict(rows, orient='index')
@@ -462,9 +395,9 @@ def _output(
 		scores,
 		placings,
 		minimum_events_to_count,
-		drop_zero_score,
 		confidence_percent,
 		sort_column,
+		drop_zero_score=drop_zero_score,
 	)
 	logger.info(stats)
 	stats.to_csv(
@@ -480,6 +413,36 @@ def _output(
 		placings.reindex(index=stats.index).to_csv(
 			output_path / f'Tournament result placings{suffix}.csv'
 		)
+		tier_list: BaseTierList[Player] = TextBoxTierList.from_series(
+			stats['Mean score'],
+			8,
+			append_minmax_to_tier_titles=True,
+			score_formatter='.4g',
+		)
+		tier_list.to_image(max_images_per_row=5).save(
+			output_path / f'Tournament results{suffix} tiered by mean.png'
+		)
+		if confidence_percent:
+			tier_list = TextBoxTierList.from_series(
+				stats[f'{confidence_percent:.0%} confidence interval low'],
+				8,
+				append_minmax_to_tier_titles=True,
+				score_formatter='.4g',
+			)
+			tier_list.to_image(max_images_per_row=5).save(
+				output_path
+				/ f'Tournament results{suffix} tiered by confidence interval low.png'
+			)
+			tier_list = TextBoxTierList.from_series(
+				stats[f'{confidence_percent:.0%} confidence interval high'],
+				8,
+				append_minmax_to_tier_titles=True,
+				score_formatter='.4g',
+			)
+			tier_list.to_image(max_images_per_row=5).save(
+				output_path
+				/ f'Tournament results{suffix} tiered by confidence interval high.png'
+			)
 
 	if output_path:
 		# TODO: This should all be optional via arguments
@@ -505,9 +468,9 @@ def _output(
 					scores,
 					placings,
 					minimum_events_to_count,
-					drop_zero_score,
 					confidence_percent,
 					sort_column,
+					drop_zero_score=drop_zero_score,
 				)
 				logger.info('Locals only:')
 				logger.info(stats)
@@ -526,7 +489,12 @@ def _output(
 				1, axis='columns'
 			)
 			stats = _get_stats(
-				scores, placings, 1, drop_zero_score, confidence_percent, sort_column
+				scores,
+				placings,
+				1,
+				confidence_percent,
+				sort_column,
+				drop_zero_score=drop_zero_score,
 			)
 			logger.info('Majors only:')
 			logger.info(stats)
@@ -547,9 +515,9 @@ def _output(
 				scores,
 				placings,
 				minimum_events_to_count,
-				drop_zero_score,
 				confidence_percent,
 				sort_column,
+				drop_zero_score=drop_zero_score,
 			)
 			logger.info('Regionals only:')
 			logger.info(regionals_only)
@@ -665,6 +633,8 @@ def main():
 				'--excluded-series',
 				'Epic Games Night',
 				'--drop-zero-score',
+				'--minimum-events-to-count',
+				'5',
 				'--sort-column',
 				'low',
 				'/media/Shared/Datasets/Smash',
@@ -719,11 +689,11 @@ def main():
 		event_size_to_count,
 		excluded_series,
 		minimum_events_to_count,
-		drop_zero_score,
-		output_dates,
-		redemption,
-		confidence_percent,
-		sort_column,
+		output_dates=output_dates,
+		drop_zero_score=drop_zero_score,
+		redemption=redemption,
+		confidence_percent=confidence_percent,
+		sort_column=sort_column,
 	)
 
 
