@@ -54,6 +54,7 @@ def main() -> None:
 
 	tl = CharacterTierList.from_series(
 		df['mean'],
+		tiers='auto',
 		append_minmax_to_tier_titles=True,
 		score_formatter='.4g',
 		scale_factor=3,
@@ -69,6 +70,7 @@ def main() -> None:
 			for char, scores in act_char_ranks.items()
 			if any(scores)
 		],
+		tiers='auto',
 		append_minmax_to_tier_titles=True,
 		score_formatter='.4g',
 		scale_factor=3,
@@ -87,6 +89,7 @@ def main() -> None:
 				strict=True,
 			),
 		),
+		tiers='auto',
 		append_minmax_to_tier_titles=False,
 		score_formatter='%',
 	)
@@ -96,6 +99,7 @@ def main() -> None:
 
 	tl = CharacterTierList(
 		[TieredItem(char, len(char.name)) for char in df.index],
+		tiers='auto',
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)

@@ -43,6 +43,7 @@ class Tiers(NamedTuple):
 
 
 def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
+	"""Loss function that gives a number closer to 0 for more balanced clusters (containing similar number of elements), kinda"""
 	sizes = tiers.tiers.value_counts()
 	if not desired_size:
 		desired_size = sizes.mean()
@@ -52,19 +53,22 @@ def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
 
 def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
 	"""Tries to find a value for n_clusters that gives cluster sizes close to sqrt(number of tier items)"""
-	best_score = -numpy.inf
+	best_loss = numpy.inf
 	best = None
+	# KMeans is invalid with <2 clusters, and wouldn't really make sense with more than the number of unique values
 	for i in range(2, scores.nunique()):
 		tiers = _get_clusters(scores, i)
-		score = -_cluster_loss(tiers, numpy.sqrt(scores.size))
-		if best_score >= score:
+		loss = _cluster_loss(tiers, numpy.sqrt(scores.size))
+		if best_loss <= loss:
 			continue
 		if tiers.kmeans_iterations == 300:
+			# KMeans didn't like this and cooked too hard, give up
 			continue
 		if tiers.tiers.nunique() < len(tiers.centroids):
+			# KMeans gave us weird results, give up
 			continue
 		best = tiers
-		best_score = score
+		best_loss = loss
 	if not best:
 		raise RuntimeError('oh no')
 	return best
