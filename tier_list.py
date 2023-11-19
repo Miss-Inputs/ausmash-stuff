@@ -279,7 +279,7 @@ class BaseTierList(Generic[T], ABC):
 	def __init__(
 		self,
 		items: Iterable[TieredItem[T]],
-		tiers: int | Literal['auto'] | Sequence[int] = 7,
+		tiers: int | Literal['auto'] | Sequence[int] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		*,
 		append_minmax_to_tier_titles: bool = False,
@@ -299,7 +299,7 @@ class BaseTierList(Generic[T], ABC):
 			self.tiers = _get_clusters(self.data['score'], tiers)
 			self.num_tiers = len(
 				self.tiers.centroids
-			)  # Might not be the same as num_tiers, esp if num_tiers is 'auto'
+			)  # Might not be the same as tiers, esp if tiers is 'auto'
 			self.data['tier'] = self.tiers.tiers
 
 		self.append_minmax_to_tier_titles = append_minmax_to_tier_titles
@@ -315,7 +315,7 @@ class BaseTierList(Generic[T], ABC):
 	def from_series(
 		cls,
 		s: 'pandas.Series[float]',
-		tiers: int | Sequence[int] | Literal['auto'] = 7,
+		tiers: int | Sequence[int] | Literal['auto'] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		**kwargs,
 	) -> Self:
@@ -527,7 +527,7 @@ class CharacterTierList(BaseTierList[Character]):
 	def __init__(
 		self,
 		items: Iterable[TieredItem[Character]],
-		tiers: int | Literal['auto'] | Sequence[int] = 7,
+		tiers: int | Literal['auto'] | Sequence[int] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		*,
 		append_minmax_to_tier_titles: bool = False,
@@ -578,7 +578,7 @@ def main() -> None:
 			chars.add(combine_echo_fighters(char))
 	chars.add(CombinedCharacter('Mii Fighters', miis))
 	scores = [TieredItem(char, len(char.name)) for char in chars]
-	tierlist = CharacterTierList(scores, 'auto', append_minmax_to_tier_titles=True)
+	tierlist = CharacterTierList(scores, append_minmax_to_tier_titles=True)
 	print(
 		tierlist.tiers.inertia,
 		tierlist.tiers.kmeans_iterations,
@@ -591,7 +591,6 @@ def main() -> None:
 	players = [p for p in Elo.for_game('SSBU', 'ACT') if p.is_active]
 	listy = TextBoxTierList(
 		[TieredItem(player.player, player.elo) for player in players],
-		'auto',
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)

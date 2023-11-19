@@ -28,7 +28,7 @@ from ausmash import (
 	rounds_from_victory,
 )
 
-from tier_list import TextBoxTierList, BaseTierList
+from tier_list import BaseTierList, TextBoxTierList
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -415,7 +415,6 @@ def _output(
 		)
 		tier_list: BaseTierList[Player] = TextBoxTierList.from_series(
 			stats['Mean score'],
-			8,
 			append_minmax_to_tier_titles=True,
 			score_formatter='.4g',
 		)
