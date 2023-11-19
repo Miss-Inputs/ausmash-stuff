@@ -42,12 +42,21 @@ class Tiers(NamedTuple):
 	kmeans_iterations: int
 
 
+def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
+	sizes = tiers.tiers.value_counts()
+	if not desired_size:
+		desired_size = sizes.mean()
+	diffs = sizes - desired_size
+	return (diffs**2).sum()
+
+
 def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
+	"""Tries to find a value for n_clusters that gives cluster sizes close to sqrt(number of tier items)"""
 	best_score = -numpy.inf
 	best = None
 	for i in range(2, scores.nunique()):
 		tiers = _get_clusters(scores, i)
-		score = -tiers.inertia
+		score = -_cluster_loss(tiers, numpy.sqrt(scores.size))
 		if best_score >= score:
 			continue
 		if tiers.kmeans_iterations == 300:
@@ -272,7 +281,7 @@ class BaseTierList(Generic[T], ABC):
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
 	) -> None:
-		""":param tiers: Number of tiers to separate scores into. If "auto", finds the biggest number of tiers before it would stop making sense, but that often doesn't work very well and is slower to calculate, so don't bother. If a sequence, pre-computed tiers"""
+		""":param tiers: Number of tiers to separate scores into. If "auto", tries to find a number of tiers that balances the size of each tier, but I made up that algorithm myself and I don't strictly speaking know what I'm doing so maybe it doesn't work. If a sequence, pre-computed tiers"""
 		self.data = pandas.DataFrame(list(items), columns=['item', 'score'])
 		self.data.sort_values('score', ascending=False, inplace=True)
 		self.data['rank'] = numpy.arange(1, self.data.index.size + 1)
@@ -565,7 +574,7 @@ def main() -> None:
 			chars.add(combine_echo_fighters(char))
 	chars.add(CombinedCharacter('Mii Fighters', miis))
 	scores = [TieredItem(char, len(char.name)) for char in chars]
-	tierlist = CharacterTierList(scores, 7, append_minmax_to_tier_titles=True)
+	tierlist = CharacterTierList(scores, 'auto', append_minmax_to_tier_titles=True)
 	print(
 		tierlist.tiers.inertia,
 		tierlist.tiers.kmeans_iterations,
@@ -578,6 +587,7 @@ def main() -> None:
 	players = [p for p in Elo.for_game('SSBU', 'ACT') if p.is_active]
 	listy = TextBoxTierList(
 		[TieredItem(player.player, player.elo) for player in players],
+		'auto',
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)
