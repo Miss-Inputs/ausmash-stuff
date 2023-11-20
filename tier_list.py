@@ -52,14 +52,15 @@ def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
 
 
 def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
-	"""Tries to find a value for n_clusters that gives cluster sizes close to sqrt(number of tier items)"""
+	"""Tries to find a value for n_clusters that gives cluster sizes close to sqrt(number of tier items)
+	:raises RuntimeError: if it somehow doesn't find anything"""
 	best_loss = numpy.inf
 	best = None
 	# KMeans is invalid with <2 clusters, and wouldn't really make sense with more than the number of unique values
 	for i in range(2, scores.nunique()):
 		tiers = _get_clusters(scores, i)
 		loss = _cluster_loss(tiers, numpy.sqrt(scores.size))
-		if best_loss <= loss:
+		if loss > best_loss:
 			continue
 		if tiers.kmeans_iterations == 300:
 			# KMeans didn't like this and cooked too hard, give up
@@ -77,7 +78,7 @@ def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
 def _get_clusters(
 	scores: 'pandas.Series[float]', n_clusters: int | Literal['auto']
 ) -> Tiers:
-	# Returns tiers for each row, centroids
+	"""Separate scores into tiers with k-means clustering. Ensures tier numbers are monotonically increasing."""
 	if n_clusters == 'auto':
 		return find_best_clusters(scores)
 	kmeans = KMeans(n_clusters, n_init='auto', random_state=0)
@@ -204,6 +205,7 @@ def fit_font(
 def combine_images_diagonally(
 	first_image: Image.Image, second_image: Image.Image
 ) -> Image.Image:
+	"""Return a new image of the size of the first image with one diagonal half being from the first image, and the second half being from the second image"""
 	if first_image.size != second_image.size:
 		second_image = second_image.resize(first_image.size)
 	# numpy.triu/tril won't work nicely on non-square rectangles
@@ -212,6 +214,7 @@ def combine_images_diagonally(
 	square_size = max_dim, max_dim
 	a = numpy.array(first_image.resize(square_size))
 	b = numpy.array(second_image.resize(square_size))
+	# triu/tril works on the last two axes, so we want those to be height and width
 	upper_right = numpy.triu(a.swapaxes(0, 2)).swapaxes(0, 2)
 	lower_left = numpy.tril(b.swapaxes(0, 2)).swapaxes(0, 2)
 	return Image.fromarray(upper_right + lower_left).resize(orig_size)
@@ -227,6 +230,7 @@ def draw_centred_textbox(
 	text: str,
 	font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
 ):
+	"""Draw a box with text in the centre with a 1 pixel border and the specified background colour, selecting white or black text colour as appropriate for readability"""
 	colour_as_int = tuple(int(v * 255) for v in background_colour)
 	# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
 	# Well colorsys.rgb_to_yiv would also potentially work
@@ -255,6 +259,7 @@ def draw_centred_textbox(
 
 @cache
 def get_character_image(char: Character) -> Image.Image:
+	"""Yoink character select screen image for a character as a Pillow image."""
 	url = char.character_select_screen_pic_url
 	response = requests.get(url, stream=True, timeout=10)
 	response.raise_for_status()
@@ -386,7 +391,7 @@ class BaseTierList(Generic[T], ABC):
 
 	@abstractmethod
 	def get_item_image(self, item: T) -> Image.Image:
-		...
+		"""Return an image that represents item."""
 
 	@cached_property
 	def scaled_centroids(self) -> Mapping[int, float]:
