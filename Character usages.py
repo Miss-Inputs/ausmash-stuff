@@ -54,8 +54,23 @@ def _region(match: Match) -> str:
 	return match.tournament.region.short_name
 
 
+colourmap = pyplot.get_cmap('Spectral')
+
+
+def output_tier_list(matches: Sequence[Match], image_path: Path):
+	usages = character_usages(matches)
+	tier_list = CharacterTierList(
+		usages,
+		score_formatter='%',
+		scale_factor=3,
+	)
+	if tier_list.num_tiers == 3:
+		tier_list.tier_names = dict(enumerate('SAB'))
+	tier_list.to_image(colourmap, show_scores=True).save(image_path)
+	image_path.with_suffix('.txt').write_text(tier_list.to_text(show_scores=True), encoding='utf8')
+
+
 def main() -> None:
-	colourmap = pyplot.get_cmap('Spectral')
 	base_dir = Path('/media/Shared/Datasets/Smash/')
 	with ZstdFile(max(base_dir.glob('All matches (*).pickle.zst')).open('rb')) as z:
 		matches = cast(Sequence[Match], pickle.load(z))
@@ -63,58 +78,27 @@ def main() -> None:
 	ult_matches = sorted(
 		(match for match in matches if match.game.short_name == 'SSBU'), key=_region
 	)
-	usages = character_usages(ult_matches)
-	tier_list = CharacterTierList(
-		usages,
-		score_formatter='%',
-		scale_factor=3,
+	output_tier_list(ult_matches, base_dir / 'Characters by usage.png')
+	output_tier_list(
+		[match for match in matches if match.game.short_name == 'SSBM'],
+		base_dir / 'SSBM characters by usage.png',
 	)
-	image_path = base_dir / 'Characters by usage.png'
-	tier_list.to_image(colourmap, show_scores=True).save(image_path)
-	image_path.with_suffix('.txt').write_text(tier_list.to_text(show_scores=True), encoding='utf8')
-	recent_usages = character_usages(
-		[m for m in ult_matches if months_between(date.today(), m.date) <= 3]
+	output_tier_list(
+		[m for m in ult_matches if months_between(date.today(), m.date) <= 3],
+		base_dir / 'Characters by usage in last 3 months.png',
 	)
-	tier_list = CharacterTierList(
-		recent_usages,
-		score_formatter='%',
-		scale_factor=3,
-	)
-	image_path = base_dir / 'Characters by usage in last 3 months.png'
-	tier_list.to_image(colourmap, show_scores=True).save(image_path)
-	image_path.with_suffix('.txt').write_text(tier_list.to_text(show_scores=True), encoding='utf8')
 
 	for region, group in itertools.groupby(ult_matches, _region):
 		logger.info(region)
 		matches = list(group)
-		usages = character_usages(matches)
-		tier_list = CharacterTierList(
-			usages,
-			score_formatter='%',
-			scale_factor=3,
-		)
-		if tier_list.num_tiers == 3:
-			tier_list.tier_names = dict(enumerate('SAB'))
-		image_path = base_dir / f'Characters by usage in {region}.png'
-		tier_list.to_image(colourmap, show_scores=True).save(image_path)
-		image_path.with_suffix('.txt').write_text(
-			tier_list.to_text(show_scores=True), encoding='utf8'
-		)
+		output_tier_list(matches, base_dir / f'Characters by usage in {region}.png')
 
 		recent_matches = [m for m in matches if months_between(date.today(), m.date) <= 3]
 		if not recent_matches:
 			logger.info('wank dicks balls piss')
 			continue
-		recent_usages = character_usages(recent_matches)
-		tier_list = CharacterTierList(
-			recent_usages,
-			score_formatter='%',
-			scale_factor=3,
-		)
-		image_path = base_dir / f'Characters by usage in {region} in last 3 months.png'
-		tier_list.to_image(colourmap, show_scores=True).save(image_path)
-		image_path.with_suffix('.txt').write_text(
-			tier_list.to_text(show_scores=True), encoding='utf8'
+		output_tier_list(
+			recent_matches, base_dir / f'Characters by usage in {region} in last 3 months.png'
 		)
 
 
