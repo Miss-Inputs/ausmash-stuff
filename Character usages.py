@@ -47,7 +47,7 @@ def character_usages(matches: Sequence[Match]):
 
 
 def months_between(d1: date, d2: date):
-	return ((d1.year - d2.year) * 12) + (d2.month - d2.month)
+	return ((d1.year - d2.year) * 12) + (d1.month - d2.month)
 
 
 def _region(match: Match) -> str:
