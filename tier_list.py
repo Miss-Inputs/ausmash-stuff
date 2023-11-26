@@ -351,7 +351,7 @@ class BaseTierList(Generic[T], ABC):
 			tier_letters[-1] = 'Z'
 		return dict(enumerate(tier_letters))
 
-	def to_text(self) -> str:
+	def to_text(self, *, show_scores: bool=False) -> str:
 		"""Return this tier list displayed as plain text"""
 		return '\n'.join(
 			itertools.chain.from_iterable(
@@ -359,7 +359,7 @@ class BaseTierList(Generic[T], ABC):
 					'=' * 20,
 					self.displayed_tier_text(tier_number, group),
 					'-' * 10,
-					*(f'{row.rank}: {row.item}' for row in group.itertuples()),
+					*(f'{row.rank}: {row.item}' + (f' ({row.score:{self.score_formatter}})' if show_scores else '') for row in group.itertuples()),
 					'',
 				)
 				for tier_number, group in self._groupby
