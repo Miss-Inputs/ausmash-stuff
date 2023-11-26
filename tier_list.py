@@ -162,8 +162,6 @@ def fit_font(
 	font_size = font.size if font else (100 if height is None else height * 2)
 
 	if isinstance(text, str):
-		size: None | tuple[int, int] = None  # right, bottom
-
 		while True:
 			if isinstance(font, ImageFont.FreeTypeFont):
 				font = font.font_variant(size=font_size)
@@ -173,7 +171,6 @@ def fit_font(
 					raise RuntimeError('Uh oh, you need FreeType and Pillow >= 10.1.10')  # noqa: TRY004
 				font = default_font
 			size = font.getbbox(text)[2:]
-			assert size, 'fgfgdfgdf'
 			if font_size == 1 or (
 				(height is None or (size[1] + vertical_padding) <= height)
 				and (width is None or (size[0] + horizontal_padding) <= width)
@@ -182,8 +179,6 @@ def fit_font(
 			font_size -= 1
 
 		assert font, 'how did my font end up being None :('
-		if size is None:
-			raise ValueError('Size is none, how did this happen')
 		return font, size[0] + horizontal_padding, size[1] + vertical_padding
 
 	out_width = 0

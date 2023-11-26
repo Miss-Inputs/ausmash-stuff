@@ -96,7 +96,6 @@ def main() -> None:
 
 	tl = CharacterTierList(
 		[TieredItem(char, len(char.name)) for char in df.index],
-		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)
 	tl.to_image(spectral, show_scores=True).save(
