@@ -164,7 +164,7 @@ def _get_stats(
 	sort_column: str | None = None,
 	*,
 	drop_zero_score: bool = False,
-):
+) -> pandas.DataFrame:
 	scores.dropna(how='all', inplace=True)
 	placings.dropna(how='all', inplace=True)
 	# scores: pandas.DataFrame = df.loc[:, (slice(None), 'Score')].droplevel(1, axis='columns')
@@ -418,7 +418,7 @@ def _output(
 			append_minmax_to_tier_titles=True,
 			score_formatter='.4g',
 		)
-		tier_list.to_image(max_images_per_row=5).save(
+		tier_list.to_image(max_images_per_row=5, show_scores=True).save(
 			output_path / f'Tournament results{suffix} tiered by mean.png'
 		)
 		if confidence_percent:
@@ -428,7 +428,7 @@ def _output(
 				append_minmax_to_tier_titles=True,
 				score_formatter='.4g',
 			)
-			tier_list.to_image(max_images_per_row=5).save(
+			tier_list.to_image(max_images_per_row=5, show_scores=True).save(
 				output_path
 				/ f'Tournament results{suffix} tiered by confidence interval low.png'
 			)
@@ -438,7 +438,7 @@ def _output(
 				append_minmax_to_tier_titles=True,
 				score_formatter='.4g',
 			)
-			tier_list.to_image(max_images_per_row=5).save(
+			tier_list.to_image(max_images_per_row=5, show_scores=True).save(
 				output_path
 				/ f'Tournament results{suffix} tiered by confidence interval high.png'
 			)

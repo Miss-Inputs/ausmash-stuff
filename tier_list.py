@@ -23,7 +23,7 @@ import requests
 from ausmash import Character, Elo, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
 from matplotlib import pyplot  # just for colour maps lol
-from PIL import Image, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageColor, ImageFilter, ImageFont, ImageOps
 from PIL.ImageDraw import ImageDraw
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
@@ -154,31 +154,36 @@ def fit_font(
 	:param height: Max height in pixels or None
 	:param text: Text to measure, or iterable of texts to find what fits all of them
 	:param vertical_padding: Amount of vertical space in pixels to add to the box
-	:param horizontal_padding: Amount of horizontal space in pixels to add to the box"""
-	# Find the largest font size we can use inside the tier name box to fit the available height
+	:param horizontal_padding: Amount of horizontal space in pixels to add to the box
+	:raises RuntimeError: if font is None and default font can't be resized
+	:raises ValueError: if it can't find a font at all somehow
+	"""
 	# font_size is points and not pixels, but it'll do as a starting point
 	font_size = font.size if font else (100 if height is None else height * 2)
 
 	if isinstance(text, str):
 		size: None | tuple[int, int] = None  # right, bottom
-		while (
-			size is None
-			or (
-				(height is None or (size[1] + vertical_padding) > height)
-				and (width is None or (size[0] + horizontal_padding) > width)
-			)
-		) and font_size > 0:
+
+		while True:
 			if isinstance(font, ImageFont.FreeTypeFont):
 				font = font.font_variant(size=font_size)
 			else:
 				default_font = ImageFont.load_default(font_size)
 				if not isinstance(default_font, ImageFont.FreeTypeFont):
-					raise RuntimeError('Uh oh, you need FreeType or Pillow >= 10.1.10')  # noqa: TRY004
+					raise RuntimeError('Uh oh, you need FreeType and Pillow >= 10.1.10')  # noqa: TRY004
 				font = default_font
 			size = font.getbbox(text)[2:]
+			assert size, 'fgfgdfgdf'
+			if font_size == 1 or (
+				(height is None or (size[1] + vertical_padding) <= height)
+				and (width is None or (size[0] + horizontal_padding) <= width)
+			):
+				break
 			font_size -= 1
+
 		assert font, 'how did my font end up being None :('
-		assert size, 'meowwww'  # FIXME I think this can happen if max image size is <= the smallest size of the default font? (I think even if font_size = 0 it's not smaller than like 8 or whichever)
+		if size is None:
+			raise ValueError('Size is none, how did this happen')
 		return font, size[0] + horizontal_padding, size[1] + vertical_padding
 
 	out_width = 0
@@ -222,7 +227,7 @@ def combine_images_diagonally(
 
 def draw_centred_textbox(
 	draw: ImageDraw,
-	background_colour: tuple[float, float, float, float],
+	background_colour: tuple[float, float, float, float] | str,
 	left: int,
 	top: int,
 	right: int,
@@ -231,6 +236,8 @@ def draw_centred_textbox(
 	font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
 ):
 	"""Draw a box with text in the centre with a 1 pixel border and the specified background colour, selecting white or black text colour as appropriate for readability"""
+	if isinstance(background_colour, str):
+		background_colour = ImageColor.getrgb(background_colour)
 	colour_as_int = tuple(int(v * 255) for v in background_colour)
 	# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
 	# Well colorsys.rgb_to_yiv would also potentially work
@@ -281,6 +288,8 @@ class TieredItem(Generic[T]):
 
 
 class BaseTierList(Generic[T], ABC):
+	"""Abstract tier list where all the logic is"""
+
 	def __init__(
 		self,
 		items: Iterable[TieredItem[T]],
@@ -332,6 +341,7 @@ class BaseTierList(Generic[T], ABC):
 
 	@staticmethod
 	def default_tier_names(length: int) -> Mapping[int, str]:
+		"""Default tier names named after letters as is usually the case, starting with S at the top"""
 		if length == 2:
 			return {0: 'Good', 1: 'Bad'}
 		if length == 3:
@@ -347,6 +357,7 @@ class BaseTierList(Generic[T], ABC):
 		return dict(enumerate(tier_letters))
 
 	def to_text(self) -> str:
+		"""Return this tier list displayed as plain text"""
 		return '\n'.join(
 			itertools.chain.from_iterable(
 				(
@@ -409,12 +420,35 @@ class BaseTierList(Generic[T], ABC):
 		self,
 		colourmap: 'str | Colormap | None' = None,
 		max_images_per_row: int | None = 8,
+		*,
+		show_scores: bool = False,
+		score_height: float = 0.5,
 	) -> Image.Image:
 		"""Render the tier list as an image.
 
 		This doesn't look too great if the images are of uneven size, but that's allowed."""
 		max_image_width = max(im.width for im in self.images.values())
 		max_image_height = max(im.height for im in self.images.values())
+		if show_scores:
+			scores = {
+				item: f'{score:{self.score_formatter}}'
+				for item, score in zip(
+					self.data['item'], self.data['score'], strict=True
+				)
+			}
+			score_font, _, score_height = fit_font(
+				None,
+				max_image_width,
+				int(
+					score_height
+					if score_height > 1
+					else max_image_height * score_height
+				),
+				scores.values(),
+				vertical_padding=0,
+			)
+			max_image_height += score_height
+
 		tier_texts = {i: self.displayed_tier_text(i) for i in self._tier_texts}
 
 		if colourmap is None or isinstance(colourmap, str):
@@ -422,7 +456,11 @@ class BaseTierList(Generic[T], ABC):
 
 		font: ImageFont.FreeTypeFont | None = None
 		font, textbox_width, _ = fit_font(
-			font, None, max_image_height, tier_texts.values()
+			font,
+			None,
+			max_image_height,
+			tier_texts.values(),
+			horizontal_padding=max_image_height,  # Not a typo, I just think that looks better
 		)
 
 		height = self._groupby.ngroups * max_image_height
@@ -462,6 +500,22 @@ class BaseTierList(Generic[T], ABC):
 			next_image_x = textbox_width + 1  # Account for border
 			for i, item in enumerate(group['item']):
 				item_image = self.images[item]
+				if show_scores:
+					orig_height = item_image.height
+					item_image = pad_image(
+						item_image, item_image.width, orig_height + score_height, trans
+					)
+					draw_centred_textbox(
+						ImageDraw(item_image),
+						'black',
+						0,
+						orig_height,
+						item_image.width,
+						item_image.height,
+						scores[item],
+						score_font,
+					)
+
 				image_row, image_col = divmod(i, max_images_per_row)
 				if not image_col:
 					next_image_x = textbox_width + 1
@@ -529,6 +583,8 @@ class TextBoxTierList(TierList[T]):
 
 
 class CharacterTierList(BaseTierList[Character]):
+	"""Tier list specifically for characters, which would be one of the most likely use cases"""
+
 	def __init__(
 		self,
 		items: Iterable[TieredItem[Character]],
@@ -592,6 +648,7 @@ def main() -> None:
 	)
 	print(tierlist.tiers.centroids)
 	print(tierlist.to_text())
+	tierlist.to_image('rainbow_r', show_scores=True).show()
 
 	players = [p for p in Elo.for_game('SSBU', 'ACT') if p.is_active]
 	listy = TextBoxTierList(
@@ -599,7 +656,7 @@ def main() -> None:
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)
-	listy.to_image('rainbow_r').show()
+	listy.to_image('rainbow_r', show_scores=True).show()
 
 	test_list = TextBoxTierList(
 		[
@@ -614,7 +671,7 @@ def main() -> None:
 		append_minmax_to_tier_titles=True,
 	)
 	print(test_list.to_text())
-	test_list.to_image().show()
+	test_list.to_image(show_scores=True).show()
 
 
 if __name__ == '__main__':

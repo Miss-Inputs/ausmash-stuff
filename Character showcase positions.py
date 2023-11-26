@@ -58,7 +58,7 @@ def main() -> None:
 		score_formatter='.4g',
 		scale_factor=3,
 	)
-	tl.to_image(spectral).save(
+	tl.to_image(spectral, show_scores=True).save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
 	)
 	print(tl.to_text())
@@ -73,7 +73,7 @@ def main() -> None:
 		score_formatter='.4g',
 		scale_factor=3,
 	)
-	tl.to_image(spectral).save(
+	tl.to_image(spectral, show_scores=True).save(
 		'/media/Shared/Datasets/Smash/Character showcase positions ACT.png'
 	)
 	print(tl.to_text())
@@ -99,7 +99,7 @@ def main() -> None:
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)
-	tl.to_image(spectral).save(
+	tl.to_image(spectral, show_scores=True).save(
 		'/media/Shared/Datasets/Smash/Characters tiered by name length.png'
 	)
 
