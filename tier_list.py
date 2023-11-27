@@ -236,9 +236,11 @@ def draw_centred_textbox(
 ):
 	"""Draw a box with text in the centre with a 1 pixel border and the specified background colour, selecting white or black text colour as appropriate for readability"""
 	if isinstance(background_colour, str):
-		background_colour = ImageColor.getrgb(background_colour)
-		assert not isinstance(background_colour, str), 'No mypy, it would not be a str anymore'
-	colour_as_int = tuple(int(v * 255) for v in background_colour)
+		colour_as_int = ImageColor.getrgb(background_colour)
+		background_colour = tuple(v / 255 for v in colour_as_int)
+		assert background_colour, 'Mypy, why would it be a str at this point'
+	else:
+		colour_as_int = tuple(int(v * 255) for v in background_colour)
 	# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
 	# Well colorsys.rgb_to_yiv would also potentially work
 	luminance = (
@@ -483,7 +485,16 @@ class BaseTierList(Generic[T], ABC):
 		if self.title is not None:
 			next_line_y = max_image_height
 			title_font = fit_font(None, width, max_image_height, self.title)[0]
-			draw_centred_textbox(draw, title_background if title_background else trans, 0, 0, width, max_image_height, self.title, title_font)
+			draw_centred_textbox(
+				draw,
+				title_background if title_background else trans,
+				0,
+				0,
+				width,
+				max_image_height,
+				self.title,
+				title_font,
+			)
 
 		actual_width = width
 		for tier_number, group in self._groupby:
