@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from io import BytesIO
 import itertools
 import re
 import warnings
@@ -20,6 +21,7 @@ from typing import (
 import numpy
 import pandas
 import requests
+from requests_cache import CachedSession
 from ausmash import Character, Elo, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
 from matplotlib import pyplot  # just for colour maps lol
@@ -267,13 +269,13 @@ def draw_centred_textbox(
 	)
 
 
-@cache
 def get_character_image(char: Character) -> Image.Image:
 	"""Yoink character select screen image for a character as a Pillow image."""
 	url = char.character_select_screen_pic_url
-	response = requests.get(url, stream=True, timeout=10)
-	response.raise_for_status()
-	return Image.open(response.raw)
+	with CachedSession('character_images', use_cache_dir=True) as session:
+		response = session.get(url, timeout=10) #stream=True doesn't work with CachedSession I think
+		response.raise_for_status()
+		return Image.open(BytesIO(response.content))
 
 
 T = TypeVar('T')
