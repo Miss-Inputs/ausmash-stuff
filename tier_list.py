@@ -75,9 +75,7 @@ def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
 	return best
 
 
-def _get_clusters(
-	scores: 'pandas.Series[float]', n_clusters: int | Literal['auto']
-) -> Tiers:
+def _get_clusters(scores: 'pandas.Series[float]', n_clusters: int | Literal['auto']) -> Tiers:
 	"""Separate scores into tiers with k-means clustering. Ensures tier numbers are monotonically increasing."""
 	if n_clusters == 'auto':
 		return find_best_clusters(scores)
@@ -119,7 +117,9 @@ def pad_image(
 	new_image = Image.new(image.mode, (width, height), colour)
 	if image.palette:
 		palette = image.getpalette()
-		assert palette, 'image.getpalette() should not return None since we have already checked image.palette'
+		assert (
+			palette
+		), 'image.getpalette() should not return None since we have already checked image.palette'
 		new_image.putpalette(palette)
 	if centred:
 		x = (width - image.width) // 2
@@ -170,7 +170,15 @@ def fit_font(
 				if not isinstance(default_font, ImageFont.FreeTypeFont):
 					raise RuntimeError('Uh oh, you need FreeType and Pillow >= 10.1.10')  # noqa: TRY004
 				font = default_font
-			size = font.getbbox(text)[2:]
+			if '\n' in text:
+				# This is more annoying then, because there is no ImageFont.getmultilinebbox
+				# And I don't feel like doing all the line calculations myself to make it work (or do I) (would need to call getbbox for each line and then add the line spacing)
+				# This isn't even necessarily a good idea if it wasn't for me never fucking with the spacing parameter of multiline_text when I use it or anything like that
+				size = ImageDraw(Image.new('RGBA', (width, height))).multiline_textbbox(
+					(0, 0), text, font
+				)[2:]
+			else:
+				size = font.getbbox(text)[2:]
 			if font_size == 1 or (
 				(height is None or (size[1] + vertical_padding) <= height)
 				and (width is None or (size[0] + horizontal_padding) <= width)
@@ -192,9 +200,7 @@ def fit_font(
 			out_width = t_width
 		if t_height > out_height:
 			out_height = t_height
-		out_font = (
-			t_font if out_font is None or t_font.size < out_font.size else out_font
-		)
+		out_font = t_font if out_font is None or t_font.size < out_font.size else out_font
 	if not out_font:
 		raise ValueError(
 			'out_font ended up being None, maybe you provided an empty iterable for text'
@@ -202,9 +208,7 @@ def fit_font(
 	return out_font, out_width, out_height
 
 
-def combine_images_diagonally(
-	first_image: Image.Image, second_image: Image.Image
-) -> Image.Image:
+def combine_images_diagonally(first_image: Image.Image, second_image: Image.Image) -> Image.Image:
 	"""Return a new image of the size of the first image with one diagonal half being from the first image, and the second half being from the second image"""
 	if first_image.size != second_image.size:
 		second_image = second_image.resize(first_image.size)
@@ -233,6 +237,7 @@ def draw_centred_textbox(
 	"""Draw a box with text in the centre with a 1 pixel border and the specified background colour, selecting white or black text colour as appropriate for readability"""
 	if isinstance(background_colour, str):
 		background_colour = ImageColor.getrgb(background_colour)
+		assert not isinstance(background_colour, str), 'No mypy, it would not be a str anymore'
 	colour_as_int = tuple(int(v * 255) for v in background_colour)
 	# Am I stupid, or is there actually nothing in standard library or matplotlib that does this
 	# Well colorsys.rgb_to_yiv would also potentially work
@@ -256,6 +261,7 @@ def draw_centred_textbox(
 		anchor='mm',
 		fill=text_colour,
 		font=font,
+		align='center',
 	)
 
 
@@ -290,6 +296,7 @@ class BaseTierList(Generic[T], ABC):
 		items: Iterable[TieredItem[T]],
 		tiers: int | Literal['auto'] | Sequence[int] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
+		title: str | None = None,
 		*,
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
@@ -319,6 +326,7 @@ class BaseTierList(Generic[T], ABC):
 		if isinstance(tier_names, Sequence):
 			tier_names = dict(enumerate(tier_names))
 		self.tier_names = tier_names
+		self.title = title
 
 	@classmethod
 	def from_series(
@@ -326,13 +334,12 @@ class BaseTierList(Generic[T], ABC):
 		s: 'pandas.Series[float]',
 		tiers: int | Sequence[int] | Literal['auto'] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
+		title: str | None = None,
 		**kwargs,
 	) -> Self:
 		"""Create a new tier list from scores in a pandas Series.
 		Assumes s is indexed by the items to be tiered."""
-		return cls(
-			itertools.starmap(TieredItem, s.items()), tiers, tier_names, **kwargs
-		)
+		return cls(itertools.starmap(TieredItem, s.items()), tiers, tier_names, title, **kwargs)
 
 	@staticmethod
 	def default_tier_names(length: int) -> Mapping[int, str]:
@@ -351,20 +358,27 @@ class BaseTierList(Generic[T], ABC):
 			tier_letters[-1] = 'Z'
 		return dict(enumerate(tier_letters))
 
-	def to_text(self, *, show_scores: bool=False) -> str:
+	def to_text(self, *, show_scores: bool = False) -> str:
 		"""Return this tier list displayed as plain text"""
-		return '\n'.join(
+		text = '\n'.join(
 			itertools.chain.from_iterable(
 				(
 					'=' * 20,
 					self.displayed_tier_text(tier_number, group),
 					'-' * 10,
-					*(f'{row.rank}: {row.item}' + (f' ({row.score:{self.score_formatter}})' if show_scores else '') for row in group.itertuples()),
+					*(
+						f'{row.rank}: {row.item}'
+						+ (f' ({row.score:{self.score_formatter}})' if show_scores else '')
+						for row in group.itertuples()
+					),
 					'',
 				)
 				for tier_number, group in self._groupby
 			)
 		)
+		if self.title is not None:
+			text = f'{self.title}\n' + text
+		return text
 
 	@cached_property
 	def _groupby(self) -> 'DataFrameGroupBy[int]':
@@ -378,9 +392,7 @@ class BaseTierList(Generic[T], ABC):
 			for tier_number in self._groupby.groups
 		}
 
-	def displayed_tier_text(
-		self, tier_number: int, group: pandas.DataFrame | None = None
-	):
+	def displayed_tier_text(self, tier_number: int, group: pandas.DataFrame | None = None):
 		"""
 		:param tier_number: Tier number
 		:param group: If you are already iterating through ._groupby, you can pass each group so you don't have to call get_group"""
@@ -427,18 +439,12 @@ class BaseTierList(Generic[T], ABC):
 		if show_scores:
 			scores = {
 				item: f'{score:{self.score_formatter}}'
-				for item, score in zip(
-					self.data['item'], self.data['score'], strict=True
-				)
+				for item, score in zip(self.data['item'], self.data['score'], strict=True)
 			}
 			score_font, _, score_height = fit_font(
 				None,
 				max_image_width,
-				int(
-					score_height
-					if score_height > 1
-					else max_image_height * score_height
-				),
+				int(score_height if score_height > 1 else max_image_height * score_height),
 				scores.values(),
 				vertical_padding=0,
 			)
@@ -459,25 +465,29 @@ class BaseTierList(Generic[T], ABC):
 		)
 
 		height = self._groupby.ngroups * max_image_height
+		if self.title is not None:
+			height += max_image_height
 		if not max_images_per_row:
 			max_images_per_row = self._groupby.size().max()
 		width = (
-			min(self._groupby.size().max(), max_images_per_row) * max_image_width
-			+ textbox_width
+			min(self._groupby.size().max(), max_images_per_row) * max_image_width + textbox_width
 		)
 
 		trans = (0, 0, 0, 0)
 		image = Image.new('RGBA', (width, height), trans)
 		draw = ImageDraw(image)
 
-		actual_width = width
 		next_line_y = 0
+		if self.title is not None:
+			next_line_y = max_image_height
+			title_font = fit_font(None, width, max_image_height, self.title)[0]
+			draw_centred_textbox(draw, trans, 0, 0, width, max_image_height, self.title, title_font)
+
+		actual_width = width
 		for tier_number, group in self._groupby:
 			tier_text = tier_texts[tier_number]
 
-			row_height = max_image_height * (
-				((group.index.size - 1) // max_images_per_row) + 1
-			)
+			row_height = max_image_height * (((group.index.size - 1) // max_images_per_row) + 1)
 
 			box_end = next_line_y + row_height
 			if box_end > image.height:
@@ -517,9 +527,7 @@ class BaseTierList(Generic[T], ABC):
 
 				image_y = next_line_y + (max_image_height * image_row)
 				if next_image_x + item_image.width > image.width:
-					image = pad_image(
-						image, next_image_x + item_image.width, image.height, trans
-					)
+					image = pad_image(image, next_image_x + item_image.width, image.height, trans)
 					draw = ImageDraw(image)
 					# TODO: Optionally draw the score or name below each character (maybe that's better off with an overriten get_item_image, or maybe get_item_image_with_score)
 				image.paste(item_image, (next_image_x, image_y))
@@ -569,9 +577,7 @@ class TextBoxTierList(TierList[T]):
 		max_width = max(im.width for im in unscaled.values())
 		return {
 			item: draw_box(
-				pad_image(
-					image, max_width + 2, max_height + 2, (0, 0, 0, 0), centred=True
-				)
+				pad_image(image, max_width + 2, max_height + 2, (0, 0, 0, 0), centred=True)
 			)
 			for item, image in unscaled.items()
 		}
@@ -585,6 +591,7 @@ class CharacterTierList(BaseTierList[Character]):
 		items: Iterable[TieredItem[Character]],
 		tiers: int | Literal['auto'] | Sequence[int] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
+		title: str | None = None,
 		*,
 		append_minmax_to_tier_titles: bool = False,
 		score_formatter: str = '',
@@ -597,6 +604,7 @@ class CharacterTierList(BaseTierList[Character]):
 			items,
 			tiers,
 			tier_names,
+			title,
 			append_minmax_to_tier_titles=append_minmax_to_tier_titles,
 			score_formatter=score_formatter,
 		)
@@ -634,7 +642,9 @@ def main() -> None:
 			chars.add(combine_echo_fighters(char))
 	chars.add(CombinedCharacter('Mii Fighters', miis))
 	scores = [TieredItem(char, len(char.name)) for char in chars]
-	tierlist = CharacterTierList(scores, append_minmax_to_tier_titles=True)
+	tierlist = CharacterTierList(
+		scores, title='Test tier list\nCharacter name lengths', append_minmax_to_tier_titles=True
+	)
 	print(
 		tierlist.tiers.inertia,
 		tierlist.tiers.kmeans_iterations,
@@ -648,6 +658,7 @@ def main() -> None:
 	players = [p for p in Elo.for_game('SSBU', 'ACT') if p.is_active]
 	listy = TextBoxTierList(
 		[TieredItem(player.player, player.elo) for player in players],
+		title='Active ACT players by Elo',
 		append_minmax_to_tier_titles=True,
 		score_formatter=',',
 	)

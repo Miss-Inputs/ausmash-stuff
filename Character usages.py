@@ -46,7 +46,7 @@ def character_usages(matches: Sequence[Match]):
 	return (TieredItem(char, usage / len(matches)) for char, usage in usages.items())
 
 
-def months_between(d1: date, d2: date):
+def months_between(d1: date, d2: date) -> int:
 	return ((d1.year - d2.year) * 12) + (d1.month - d2.month)
 
 
