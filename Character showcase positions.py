@@ -54,11 +54,11 @@ def main() -> None:
 
 	tl = CharacterTierList.from_series(
 		df['mean'],
-		append_minmax_to_tier_titles=True,
+		title='Australia + NZ',
 		score_formatter='.4g',
 		scale_factor=3,
 	)
-	tl.to_image(spectral, show_scores=True).save(
+	tl.to_image(spectral, show_scores=True, title_background='white').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions.png'
 	)
 	print(tl.to_text())
@@ -69,11 +69,11 @@ def main() -> None:
 			for char, scores in act_char_ranks.items()
 			if any(scores)
 		],
-		append_minmax_to_tier_titles=True,
+		title='ACT',
 		score_formatter='.4g',
 		scale_factor=3,
 	)
-	tl.to_image(spectral, show_scores=True).save(
+	tl.to_image(spectral, show_scores=True, title_background='white').save(
 		'/media/Shared/Datasets/Smash/Character showcase positions ACT.png'
 	)
 	print(tl.to_text())
@@ -96,6 +96,7 @@ def main() -> None:
 
 	tl = CharacterTierList(
 		[TieredItem(char, len(char.name)) for char in df.index],
+		title='Character name lengths',
 		score_formatter=',',
 	)
 	tl.to_image(spectral, show_scores=True).save(

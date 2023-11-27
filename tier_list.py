@@ -326,6 +326,7 @@ class BaseTierList(Generic[T], ABC):
 		if isinstance(tier_names, Sequence):
 			tier_names = dict(enumerate(tier_names))
 		self.tier_names = tier_names
+
 		self.title = title
 
 	@classmethod
@@ -430,6 +431,7 @@ class BaseTierList(Generic[T], ABC):
 		*,
 		show_scores: bool = False,
 		score_height: float = 0.5,
+		title_background: tuple[int, int, int, int] | str | None = None,
 	) -> Image.Image:
 		"""Render the tier list as an image.
 
@@ -481,7 +483,7 @@ class BaseTierList(Generic[T], ABC):
 		if self.title is not None:
 			next_line_y = max_image_height
 			title_font = fit_font(None, width, max_image_height, self.title)[0]
-			draw_centred_textbox(draw, trans, 0, 0, width, max_image_height, self.title, title_font)
+			draw_centred_textbox(draw, title_background if title_background else trans, 0, 0, width, max_image_height, self.title, title_font)
 
 		actual_width = width
 		for tier_number, group in self._groupby:
