@@ -72,3 +72,6 @@ def get_all_matches() -> tuple[Path, list[MatchEtc]]:
 			pickle.dump(just_matches, z)
 
 	return base_path, matches
+
+if __name__ == '__main__':
+	get_all_matches()
