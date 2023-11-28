@@ -50,7 +50,9 @@ def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
 	if not desired_size:
 		desired_size = sizes.mean()
 	diffs = sizes - desired_size
-	diffs[diffs<0] = diffs[diffs<0] * 2 #This should penalize harder results that end up with small clusters such as 1 item (I think) so you don't end up with 9999 tiers (I think)
+	diffs[diffs < 0] = (
+		diffs[diffs < 0] * 2
+	)  # This should penalize harder results that end up with small clusters such as 1 item (I think) so you don't end up with 9999 tiers (I think)
 	# return diffs.sum()
 	return (diffs**2).sum()
 
@@ -100,15 +102,15 @@ def _get_clusters(scores: 'pandas.Series[float]', n_clusters: int | Literal['aut
 	return Tiers(tiers, centroids, kmeans.inertia_, kmeans.n_iter_)
 
 
-def generate_background(width: int, height: int) -> Image.Image:
+def generate_background(width: int, height: int, radius: int = 50) -> Image.Image:
 	"""Generate some nice pretty rainbow clouds"""
 	rng = numpy.random.default_rng()
 	noise = rng.integers(0, (128, 128, 128), (height, width, 3), 'uint8', endpoint=True)
 	# Could also have a fourth dim with max=255 and then layer multiple transparent clouds on top of each other
 	return (
 		Image.fromarray(noise)
-		.filter(ImageFilter.ModeFilter(100))
-		.filter(ImageFilter.GaussianBlur(50))
+		.filter(ImageFilter.ModeFilter(radius * 2))
+		.filter(ImageFilter.GaussianBlur(radius))
 	)
 
 
@@ -275,7 +277,9 @@ def get_character_image(char: Character) -> Image.Image:
 	"""Yoink character select screen image for a character as a Pillow image."""
 	url = char.character_select_screen_pic_url
 	with CachedSession('character_images', use_cache_dir=True) as session:
-		response = session.get(url, timeout=10) #stream=True doesn't work with CachedSession I think
+		response = session.get(
+			url, timeout=10
+		)  # stream=True doesn't work with CachedSession I think
 		response.raise_for_status()
 		return Image.open(BytesIO(response.content))
 
@@ -555,6 +559,7 @@ class BaseTierList(Generic[T], ABC):
 		# Uneven images can result in calculating too much space to the side
 		image = image.crop((0, 0, actual_width, next_line_y))
 
+		#TODO: Allow for custom background either via parameter or property supplied via constructor
 		background = generate_background(image.width, image.height)
 		background.paste(image, mask=image)
 		return background
