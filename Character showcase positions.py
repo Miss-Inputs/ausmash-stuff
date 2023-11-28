@@ -59,7 +59,7 @@ def main() -> None:
 		scale_factor=3,
 	)
 	tl.to_image(spectral, show_scores=True, title_background='white').save(
-		'/media/Shared/Datasets/Smash/Character showcase positions.png'
+		'/media/Shared/Datasets/Smash/Tier lists/Character showcase positions.png'
 	)
 	print(tl.to_text())
 
@@ -74,7 +74,7 @@ def main() -> None:
 		scale_factor=3,
 	)
 	tl.to_image(spectral, show_scores=True, title_background='white').save(
-		'/media/Shared/Datasets/Smash/Character showcase positions ACT.png'
+		'/media/Shared/Datasets/Smash/Tier lists/Character showcase positions ACT.png'
 	)
 	print(tl.to_text())
 
@@ -91,7 +91,7 @@ def main() -> None:
 		score_formatter='%',
 	)
 	tl.to_image(spectral).save(
-		'/media/Shared/Datasets/Smash/Characters tiered alphabetically.png'
+		'/media/Shared/Datasets/Smash/Tier lists/Characters tiered alphabetically.png'
 	)
 
 	tl = CharacterTierList(
@@ -100,7 +100,7 @@ def main() -> None:
 		score_formatter=',',
 	)
 	tl.to_image(spectral, show_scores=True).save(
-		'/media/Shared/Datasets/Smash/Characters tiered by name length.png'
+		'/media/Shared/Datasets/Smash/Tier lists/Characters tiered by name length.png'
 	)
 
 

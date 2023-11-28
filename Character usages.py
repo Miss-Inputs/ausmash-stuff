@@ -36,7 +36,7 @@ def character_usages(matches: Sequence[Match]) -> tuple[float, list[TieredItem[C
 
 	if matches[0].game.short_name == 'SSBU':
 		for char in ssbu_chars:
-			usages[char]
+			usages[char] #pylint: disable=pointless-statement #nuh uhhh nerd it's literally a defaultdict
 
 	return matches_with_character_data / len(matches), [
 		TieredItem(char, usage / len(matches)) for char, usage in usages.items()
@@ -117,46 +117,47 @@ def _is_in_wr1_or_2(match: Match) -> bool:
 
 def main() -> None:
 	base_dir = Path('/media/Shared/Datasets/Smash/')
-	with ZstdFile(max(base_dir.glob('All matches (*).pickle.zst')).open('rb')) as z:
+	out_dir = base_dir / 'Tier lists'
+	with ZstdFile(max(base_dir.glob('Matches/All matches (*).pickle.zst')).open('rb')) as z:
 		matches = cast(Sequence[Match], pickle.load(z))
 
 	ult_matches = sorted(
 		(match for match in matches if match.game.short_name == 'SSBU'), key=_region_name
 	)
-	output_tier_list(None, ult_matches, base_dir / 'Characters by usage.png')
+	output_tier_list(None, ult_matches, out_dir / 'Characters by usage.png')
 	output_tier_list(
 		None,
 		[m for m in ult_matches if _is_in_wr1_or_2(m)],
-		base_dir / 'Characters by usage in WR1 or WR2.png',
+		out_dir / 'Characters by usage in WR1 or WR2.png',
 		'Winners round 1 or 2',
 	)
 	output_tier_list(
 		None,
 		[m for m in ult_matches if _is_in_grands(m)],
-		base_dir / 'Characters by usage in grands.png',
+		out_dir / 'Characters by usage in grands.png',
 		'Grand finals',
 	)
 	output_tier_list(
 		None,
 		[match for match in matches if match.game.short_name == 'SSBM'],
-		base_dir / 'SSBM characters by usage.png',
+		out_dir / 'SSBM characters by usage.png',
 	)
 	recent_matches = [m for m in ult_matches if months_between(date.today(), m.date) <= 3]
 	output_tier_list(
 		None,
 		recent_matches,
-		base_dir / 'Characters by usage in last 3 months.png',
+		out_dir / 'Characters by usage in last 3 months.png',
 	)
 	output_tier_list(
 		None,
 		[m for m in recent_matches if _is_in_wr1_or_2(m)],
-		base_dir / 'Characters by usage in WR1 or WR2 in last 3 months.png',
+		out_dir / 'Characters by usage in WR1 or WR2 in last 3 months.png',
 		'Winners round 1 or 2',
 	)
 	output_tier_list(
 		None,
 		[m for m in recent_matches if _is_in_grands(m)],
-		base_dir / 'Characters by usage in grands in last 3 months.png',
+		out_dir / 'Characters by usage in grands in last 3 months.png',
 		'Grand finals',
 	)
 
@@ -164,18 +165,18 @@ def main() -> None:
 		logger.info(region.short_name)
 		matches = list(group)
 		output_tier_list(
-			region, matches, base_dir / f'Characters by usage in {region.short_name}.png'
+			region, matches, out_dir / f'Characters by usage in {region.short_name}.png'
 		)
 		output_tier_list(
 			region,
 			[m for m in matches if _is_in_wr1_or_2(m)],
-			base_dir / f'Characters by usage in WR1 or WR2 in {region.short_name}.png',
+			out_dir / f'Characters by usage in WR1 or WR2 in {region.short_name}.png',
 			'Winners round 1 or 2',
 		)
 		output_tier_list(
 			region,
 			[m for m in matches if _is_in_grands(m)],
-			base_dir / f'Characters by usage in grands in {region.short_name}.png',
+			out_dir / f'Characters by usage in grands in {region.short_name}.png',
 			'Grand finals',
 		)
 
@@ -186,19 +187,19 @@ def main() -> None:
 		output_tier_list(
 			region,
 			recent_matches,
-			base_dir / f'Characters by usage in {region.short_name} in last 3 months.png',
+			out_dir / f'Characters by usage in {region.short_name} in last 3 months.png',
 		)
 		output_tier_list(
 			region,
 			[m for m in recent_matches if _is_in_wr1_or_2(m)],
-			base_dir
+			out_dir
 			/ f'Characters by usage in WR1 or WR2 in {region.short_name} in last 3 months.png',
 			'Winners round 1 or 2',
 		)
 		output_tier_list(
 			region,
 			[m for m in recent_matches if _is_in_grands(m)],
-			base_dir / f'Characters by usage in grands in {region.short_name} in last 3 months.png',
+			out_dir / f'Characters by usage in grands in {region.short_name} in last 3 months.png',
 			'Grand finals',
 		)
 
