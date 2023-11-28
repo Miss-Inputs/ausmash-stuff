@@ -50,6 +50,8 @@ def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
 	if not desired_size:
 		desired_size = sizes.mean()
 	diffs = sizes - desired_size
+	diffs[diffs<0] = diffs[diffs<0] * 2 #This should penalize harder results that end up with small clusters such as 1 item (I think) so you don't end up with 9999 tiers (I think)
+	# return diffs.sum()
 	return (diffs**2).sum()
 
 
