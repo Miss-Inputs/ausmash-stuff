@@ -6,6 +6,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import cached_property
 from io import BytesIO
 from typing import (
@@ -34,6 +35,8 @@ from typing_extensions import Self
 if TYPE_CHECKING:
 	from matplotlib.colors import Colormap
 	from pandas.core.groupby.generic import DataFrameGroupBy
+
+Floatable = SupportsFloat | pandas.Timestamp | timedelta
 
 
 class Tiers(NamedTuple):
@@ -294,7 +297,7 @@ class TieredItem(Generic[T]):
 	"""
 
 	item: T
-	score: SupportsFloat
+	score: Floatable
 
 
 class BaseTierList(Generic[T], ABC):
@@ -341,7 +344,7 @@ class BaseTierList(Generic[T], ABC):
 	@classmethod
 	def from_items(
 		cls,
-		s: 'dict[T, SupportsFloat] | pandas.Series[float]',
+		s: 'dict[T, Floatable] | pandas.Series[float]',
 		tiers: int | Sequence[int] | Literal['auto'] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		title: str | None = None,
