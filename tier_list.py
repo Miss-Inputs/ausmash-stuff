@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
-from functools import cached_property
+from functools import cache, cached_property
 from io import BytesIO
 from typing import (
 	TYPE_CHECKING,
@@ -21,12 +21,18 @@ from typing import (
 
 import numpy
 import pandas
+import requests
 from ausmash import Character, Elo, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
 from matplotlib import pyplot  # just for colour maps lol
 from PIL import Image, ImageColor, ImageFilter, ImageFont, ImageOps
 from PIL.ImageDraw import ImageDraw
-from requests_cache import CachedSession
+
+try:
+	from requests_cache import CachedSession
+	have_requests_cache = True
+except ImportError:
+	have_requests_cache = False
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
@@ -274,11 +280,11 @@ def draw_centred_textbox(
 		align='center',
 	)
 
-
+@cache
 def get_character_image(char: Character) -> Image.Image:
 	"""Yoink character select screen image for a character as a Pillow image."""
 	url = char.character_select_screen_pic_url
-	with CachedSession('character_images', use_cache_dir=True) as session:
+	with CachedSession('character_images', use_cache_dir=True) if have_requests_cache else requests.session() as session:
 		response = session.get(
 			url, timeout=10
 		)  # stream=True doesn't work with CachedSession I think
