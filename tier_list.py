@@ -344,7 +344,7 @@ class BaseTierList(Generic[T], ABC):
 	@classmethod
 	def from_items(
 		cls,
-		s: 'dict[T, Floatable] | pandas.Series[float]',
+		s: 'Mapping[T, Floatable] | pandas.Series[float]',
 		tiers: int | Sequence[int] | Literal['auto'] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		title: str | None = None,
