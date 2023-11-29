@@ -413,7 +413,7 @@ def _output(
 		placings.reindex(index=stats.index).to_csv(
 			output_path / f'Tournament result placings{suffix}.csv'
 		)
-		tier_list: BaseTierList[Player] = TextBoxTierList.from_series(
+		tier_list: BaseTierList[Player] = TextBoxTierList.from_items(
 			stats['Mean score'],
 			append_minmax_to_tier_titles=True,
 			score_formatter='.4g',
@@ -422,7 +422,7 @@ def _output(
 			output_path / f'Tournament results{suffix} tiered by mean.png'
 		)
 		if confidence_percent:
-			tier_list = TextBoxTierList.from_series(
+			tier_list = TextBoxTierList.from_items(
 				stats[f'{confidence_percent:.0%} confidence interval low'],
 				8,
 				append_minmax_to_tier_titles=True,
@@ -432,7 +432,7 @@ def _output(
 				output_path
 				/ f'Tournament results{suffix} tiered by confidence interval low.png'
 			)
-			tier_list = TextBoxTierList.from_series(
+			tier_list = TextBoxTierList.from_items(
 				stats[f'{confidence_percent:.0%} confidence interval high'],
 				8,
 				append_minmax_to_tier_titles=True,

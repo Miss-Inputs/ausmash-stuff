@@ -52,7 +52,7 @@ def main() -> None:
 
 	spectral = pyplot.get_cmap('Spectral')
 
-	tl = CharacterTierList.from_series(
+	tl = CharacterTierList.from_items(
 		df['mean'],
 		title='Australia + NZ',
 		score_formatter='.4g',

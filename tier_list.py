@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-from io import BytesIO
 import itertools
 import re
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import cache, cached_property
+from functools import cached_property
+from io import BytesIO
 from typing import (
 	TYPE_CHECKING,
 	Any,
@@ -20,13 +20,12 @@ from typing import (
 
 import numpy
 import pandas
-import requests
-from requests_cache import CachedSession
 from ausmash import Character, Elo, combine_echo_fighters
 from ausmash.models.character import CombinedCharacter
 from matplotlib import pyplot  # just for colour maps lol
 from PIL import Image, ImageColor, ImageFilter, ImageFont, ImageOps
 from PIL.ImageDraw import ImageDraw
+from requests_cache import CachedSession
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
@@ -340,16 +339,16 @@ class BaseTierList(Generic[T], ABC):
 		self.title = title
 
 	@classmethod
-	def from_series(
+	def from_items(
 		cls,
-		s: 'pandas.Series[float]',
+		s: 'dict[T, SupportsFloat] | pandas.Series[float]',
 		tiers: int | Sequence[int] | Literal['auto'] = 'auto',
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		title: str | None = None,
 		**kwargs,
 	) -> Self:
-		"""Create a new tier list from scores in a pandas Series.
-		Assumes s is indexed by the items to be tiered."""
+		"""Create a new tier list from scores in a dict or pandas Series.
+		If Series, assumes s is indexed by the items to be tiered."""
 		return cls(itertools.starmap(TieredItem, s.items()), tiers, tier_names, title, **kwargs)
 
 	@staticmethod
@@ -559,7 +558,7 @@ class BaseTierList(Generic[T], ABC):
 		# Uneven images can result in calculating too much space to the side
 		image = image.crop((0, 0, actual_width, next_line_y))
 
-		#TODO: Allow for custom background either via parameter or property supplied via constructor
+		# TODO: Allow for custom background either via parameter or property supplied via constructor
 		background = generate_background(image.width, image.height)
 		background.paste(image, mask=image)
 		return background
