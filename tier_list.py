@@ -61,8 +61,7 @@ def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
 	diffs[diffs < 0] = (
 		diffs[diffs < 0] * 2
 	)  # This should penalize harder results that end up with small clusters such as 1 item (I think) so you don't end up with 9999 tiers (I think)
-	# return diffs.sum()
-	return (diffs**2).sum()
+	return float((diffs**2).sum()) #Technically return value is numpy.float64 or whatever (but type hinted as Any) and the mypy warning was bugging me
 
 
 def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
