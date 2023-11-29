@@ -239,10 +239,12 @@ def _get_stats(
 		'% below midpoint': portion_below_midpoint,
 		'Most inlier': zscores.abs().idxmin(axis=1, skipna=True).map(_abbrev_name, 'ignore'),
 		'Most outlier': zscores.abs().idxmax(axis=1, skipna=True).map(_abbrev_name, 'ignore'),
-		'Standout performance': zscores.idxmax(
-			axis=1, skipna=True
-		).map(_abbrev_name, 'ignore'),  # Usually the same as best tournament
-		'Low outlier': zscores.idxmin(axis=1, skipna=True).map(_abbrev_name, 'ignore'),  # Usually the same as worst?
+		'Standout performance': zscores.idxmax(axis=1, skipna=True).map(
+			_abbrev_name, 'ignore'
+		),  # Usually the same as best tournament
+		'Low outlier': zscores.idxmin(axis=1, skipna=True).map(
+			_abbrev_name, 'ignore'
+		),  # Usually the same as worst?
 		'Standard error of mean': sem,
 		'Kurtosis': scores.kurt(axis='columns', skipna=True),
 		'Skew': scores.skew(axis='columns', skipna=True),
@@ -321,18 +323,16 @@ class ScoresAndStats(NamedTuple):
 def get_scores_and_stats(
 	active_players: Iterable[Player],
 	game: Game | str,
-	region: Region | None,
 	season_start: date | None,
 	season_end: date | None,
 	event_size_to_count: int,
 	excluded_series: Iterable[str],
 	minimum_events_to_count: int,
 	*,
-	drop_zero_score: bool,
-	output_dates: bool,
-	redemption: bool,
-	confidence_percent: float,
-	sort_column: str | None,
+	drop_zero_score: bool = False,
+	redemption: bool = False,
+	confidence_percent: float = 0.95,
+	sort_column: str | None = None,
 ) -> ScoresAndStats:
 	rows = _get_rows(
 		active_players,
@@ -369,8 +369,10 @@ def get_scores_and_stats(
 	)
 	return ScoresAndStats(scores, placings, stats)
 
+
 def _abbrev_name(t: Tournament) -> str:
 	return t.abbrev_name
+
 
 def output_stats(
 	output_path: Path | None,
@@ -392,14 +394,12 @@ def output_stats(
 	scores, placings, stats = get_scores_and_stats(
 		active_players,
 		game,
-		region,
 		season_start,
 		season_end,
 		event_size_to_count,
 		excluded_series,
 		minimum_events_to_count,
 		drop_zero_score=drop_zero_score,
-		output_dates=output_dates,
 		redemption=redemption,
 		confidence_percent=confidence_percent,
 		sort_column=sort_column,
@@ -414,13 +414,13 @@ def output_stats(
 		output_path / f'Tournament result stats{suffix}.csv' if output_path else sys.stdout
 	)
 	if output_path:
-		#Reindexing by stats.index is just to sort it
+		# Reindexing by stats.index is just to sort it
 		scores.reindex(index=stats.index).rename(columns=_abbrev_name).to_csv(
 			output_path / f'Tournament result scores{suffix}.csv'
 		)
-		placings.rename(columns=_abbrev_name).map(_format_placing_tuple, na_action='ignore').reindex(index=stats.index).to_csv(
-			output_path / f'Tournament result placings{suffix}.csv'
-		)
+		placings.rename(columns=_abbrev_name).map(
+			_format_placing_tuple, na_action='ignore'
+		).reindex(index=stats.index).to_csv(output_path / f'Tournament result placings{suffix}.csv')
 		tier_list: BaseTierList[Player] = TextBoxTierList.from_items(
 			stats['Mean score'],
 			append_minmax_to_tier_titles=True,
@@ -480,9 +480,9 @@ def output_stats(
 				locals_only_stats.to_csv(
 					output_path / 'Tournament result ACT locals only stats.csv'
 				)
-				locals_only_scores.rename(columns=_abbrev_name).reindex(index=locals_only_stats.index).to_csv(
-					output_path / 'Tournament result ACT locals only scores.csv'
-				)
+				locals_only_scores.rename(columns=_abbrev_name).reindex(
+					index=locals_only_stats.index
+				).to_csv(output_path / 'Tournament result ACT locals only scores.csv')
 
 		majors_columns = scores.columns.map(lambda t: t.is_major)
 		majors_only_scores = scores.loc[:, majors_columns].copy()
@@ -501,9 +501,9 @@ def output_stats(
 			majors_only_stats.to_csv(
 				output_path / f'Tournament result stats{suffix} majors only.csv'
 			)
-			majors_only_scores.rename(columns=_abbrev_name).reindex(index=majors_only_stats.index).to_csv(
-				output_path / f'Tournament result scores{suffix} majors only.csv'
-			)
+			majors_only_scores.rename(columns=_abbrev_name).reindex(
+				index=majors_only_stats.index
+			).to_csv(output_path / f'Tournament result scores{suffix} majors only.csv')
 
 		minimum_for_regional = 3  # TODO This should probably be an argument too
 		regionals_columns = scores.apply(
@@ -530,9 +530,9 @@ def output_stats(
 			regionals_only_stats.to_csv(
 				output_path / f'Tournament result stats{suffix} regionals only.csv'
 			)
-			regionals_only_scores.rename(columns=_abbrev_name).reindex(index=regionals_only_stats.index).to_csv(
-				output_path / f'Tournament result scores{suffix} regionals only.csv'
-			)
+			regionals_only_scores.rename(columns=_abbrev_name).reindex(
+				index=regionals_only_stats.index
+			).to_csv(output_path / f'Tournament result scores{suffix} regionals only.csv')
 
 
 def main():
