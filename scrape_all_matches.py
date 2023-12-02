@@ -50,7 +50,7 @@ def iter_matches() -> Iterator[MatchEtc]:
 
 def get_all_matches() -> tuple[Path, list[MatchEtc]]:
 	base_path = Path(
-		f'/media/Shared/Datasets/Smash/All tournaments + events + results + matches ({date.today().isoformat()})'
+		f'/media/Shared/Datasets/Smash/Matches/All tournaments + events + results + matches ({date.today().isoformat()})'
 	)
 	pickle_path = base_path.with_suffix('.pickle.zst')
 	try:
