@@ -9,38 +9,31 @@ from dataclasses import dataclass
 from datetime import timedelta
 from functools import cache, cached_property
 from io import BytesIO
-from typing import (
-	TYPE_CHECKING,
-	Any,
-	Generic,
-	Literal,
-	NamedTuple,
-	SupportsFloat,
-	TypeVar,
-)
+from typing import TYPE_CHECKING, Any, Generic, Literal, NamedTuple, SupportsFloat, TypeVar
 
 import numpy
 import pandas
 import requests
 from ausmash import Character, Elo, combine_echo_fighters
-from ausmash.models.character import CombinedCharacter
+from ausmash.classes.character import CombinedCharacter
 from matplotlib import pyplot  # just for colour maps lol
 from PIL import Image, ImageColor, ImageFilter, ImageFont, ImageOps
 from PIL.ImageDraw import ImageDraw
 
 try:
 	from requests_cache import CachedSession
+
 	have_requests_cache = True
 except ImportError:
 	have_requests_cache = False
 from sklearn.cluster import KMeans
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.preprocessing import minmax_scale
-from typing_extensions import Self
 
 if TYPE_CHECKING:
 	from matplotlib.colors import Colormap
 	from pandas.core.groupby.generic import DataFrameGroupBy
+	from typing_extensions import Self
 
 Floatable = SupportsFloat | pandas.Timestamp | timedelta
 
@@ -61,7 +54,9 @@ def _cluster_loss(tiers: Tiers, desired_size: float | None) -> float:
 	diffs[diffs < 0] = (
 		diffs[diffs < 0] * 2
 	)  # This should penalize harder results that end up with small clusters such as 1 item (I think) so you don't end up with 9999 tiers (I think)
-	return float((diffs**2).sum()) #Technically return value is numpy.float64 or whatever (but type hinted as Any) and the mypy warning was bugging me
+	return float(
+		(diffs**2).sum()
+	)  # Technically return value is numpy.float64 or whatever (but type hinted as Any) and the mypy warning was bugging me
 
 
 def find_best_clusters(scores: 'pandas.Series[float]') -> Tiers:
@@ -265,10 +260,7 @@ def draw_centred_textbox(
 	draw.rectangle((left, top, left, bottom - 1), fill='black')
 	draw.rectangle((right, top, right, bottom - 1), fill='black')
 	draw.rectangle(
-		(left + 1, top, right - 1, bottom - 1),
-		fill=colour_as_int,
-		outline='black',
-		width=1,
+		(left + 1, top, right - 1, bottom - 1), fill=colour_as_int, outline='black', width=1
 	)
 	draw.text(
 		((left + right) // 2, (top + bottom) // 2),
@@ -279,11 +271,14 @@ def draw_centred_textbox(
 		align='center',
 	)
 
+
 @cache
 def get_character_image(char: Character) -> Image.Image:
 	"""Yoink character select screen image for a character as a Pillow image."""
 	url = char.character_select_screen_pic_url
-	with CachedSession('character_images', use_cache_dir=True) if have_requests_cache else requests.session() as session:
+	with CachedSession(
+		'character_images', use_cache_dir=True
+	) if have_requests_cache else requests.session() as session:
 		response = session.get(
 			url, timeout=10
 		)  # stream=True doesn't work with CachedSession I think
@@ -354,7 +349,7 @@ class BaseTierList(Generic[T], ABC):
 		tier_names: Sequence[str] | Mapping[int, str] | None = None,
 		title: str | None = None,
 		**kwargs,
-	) -> Self:
+	) -> 'Self':
 		"""Create a new tier list from scores in a dict or pandas Series.
 		If Series, assumes s is indexed by the items to be tiered."""
 		return cls(itertools.starmap(TieredItem, s.items()), tiers, tier_names, title, **kwargs)
