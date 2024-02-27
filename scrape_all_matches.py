@@ -29,23 +29,25 @@ class MatchEtc(NamedTuple):
 
 
 def iter_matches() -> Iterator[MatchEtc]:
-	for tournament in tqdm(
+	with tqdm(
 		Tournament.all_with_results(),
 		desc='Getting matches from all tournaments',
 		unit='tournament',
-	):
-		try:
-			events = tournament.events
-			for event in events:
-				results = {
-					result.player or result.player_name: result
-					for result in Result.results_for_event(event)
-				}
-				matches = Match.matches_at_event(event)
-				for match in matches:
-					yield MatchEtc(tournament, event, results, match)
-		except KeyboardInterrupt:
-			break
+	) as t:
+		for tournament in t:
+			t.set_postfix(tournament=tournament)
+			try:
+				events = tournament.events
+				for event in events:
+					results = {
+						result.player or result.player_name: result
+						for result in Result.results_for_event(event)
+					}
+					matches = Match.matches_at_event(event)
+					for match in matches:
+						yield MatchEtc(tournament, event, results, match)
+			except KeyboardInterrupt:
+				break
 
 
 def get_all_matches() -> tuple[Path, list[MatchEtc]]:
