@@ -29,7 +29,8 @@ from ausmash import (
 	rounds_from_victory,
 )
 
-from tier_list import BaseTierList, TextBoxTierList
+from tier_lister import BaseTierList, TextBoxTierList
+import operator
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -96,21 +97,11 @@ def _get_rows(
 	for player in players:
 		results = (
 			get_redemption_bracket_results(
-				player,
-				game,
-				season_start,
-				season_end,
-				event_size_to_count,
-				excluded_series,
+				player, game, season_start, season_end, event_size_to_count, excluded_series
 			)
 			if redemption
 			else get_relevant_player_results(
-				player,
-				game,
-				season_start,
-				season_end,
-				event_size_to_count,
-				excluded_series,
+				player, game, season_start, season_end, event_size_to_count, excluded_series
 			)
 		)
 
@@ -199,9 +190,10 @@ def _get_stats(
 		interval_low = mean - (z * sem)
 		interval_low.loc[interval_low < 0] = 0
 
-	wins = (placings.map(lambda f: f[0], na_action='ignore') <= 1).sum(axis='columns')
-	top_3s = (placings.map(lambda f: f[0], na_action='ignore') <= 3).sum(axis='columns')
-	top_8s = (placings.map(lambda f: f[0], na_action='ignore') <= 8).sum(axis='columns')
+	_first_item_getter = operator.itemgetter(0)
+ 	wins = (placings.map(_first_item_getter, na_action='ignore') <= 1).sum(axis='columns')
+	top_3s = (placings.map(_first_item_getter, na_action='ignore') <= 3).sum(axis='columns')
+	top_8s = (placings.map(_first_item_getter, na_action='ignore') <= 8).sum(axis='columns')
 	last_places = (scores == 0).sum(axis='columns')
 	win_portion = wins / count
 	top_3_portion = top_3s / count
@@ -422,9 +414,7 @@ def output_stats(
 			_format_placing_tuple, na_action='ignore'
 		).reindex(index=stats.index).to_csv(output_path / f'Tournament result placings{suffix}.csv')
 		tier_list: BaseTierList[Player] = TextBoxTierList.from_items(
-			stats['Mean score'],
-			append_minmax_to_tier_titles=True,
-			score_formatter='.4g',
+			stats['Mean score'], append_minmax_to_tier_titles=True, score_formatter='.4g'
 		)
 		tier_list.to_image(max_images_per_row=5, show_scores=True).save(
 			output_path / 'Tier lists' / f'Tournament results{suffix} tiered by mean.png'
