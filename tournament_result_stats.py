@@ -9,6 +9,7 @@ The ranking is based on giving a score to each player's result at each tournamen
 """
 
 import logging
+import operator
 import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 from collections.abc import Iterable, Sequence
@@ -28,9 +29,8 @@ from ausmash import (
 	get_active_players,
 	rounds_from_victory,
 )
-
 from tier_lister import BaseTierList, TextBoxTierList
-import operator
+from tqdm import tqdm
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -44,11 +44,17 @@ def get_relevant_player_results(
 	event_size_to_count: int = 1,
 	series_to_exclude: Iterable[str] | None = None,
 ) -> Sequence[Result]:
-	"""Gets only the results for a player that are wanted for comparison purposes"""
+	"""Gets only the results for a player that are wanted for comparison purposes
+
+	Returns:
+		List of Result, newest to oldest
+	"""
 	if series_to_exclude is None:
 		series_to_exclude = []
 	results = Result.results_for_player(player, season_start, season_end)
 	# Exclude pro bracket results as we will get the pools result for the whole tournament
+	if isinstance(game, str):
+		game = Game(game)
 	return [
 		r
 		for r in results
@@ -94,43 +100,46 @@ def _get_rows(
 	redemption: bool = False,
 ) -> dict[Player, dict[tuple[Tournament, str], int | tuple[int, int]]]:
 	rows: dict[Player, dict[tuple[Tournament, str], int | tuple[int, int]]] = {}
-	for player in players:
-		results = (
-			get_redemption_bracket_results(
-				player, game, season_start, season_end, event_size_to_count, excluded_series
+
+	with tqdm(players, 'Getting tournament results', unit='player') as t:
+		for player in t:
+			t.set_postfix(player=player)
+			results = (
+				get_redemption_bracket_results(
+					player, game, season_start, season_end, event_size_to_count, excluded_series
+				)
+				if redemption
+				else get_relevant_player_results(
+					player, game, season_start, season_end, event_size_to_count, excluded_series
+				)
 			)
-			if redemption
-			else get_relevant_player_results(
-				player, game, season_start, season_end, event_size_to_count, excluded_series
-			)
-		)
 
-		data: dict[tuple[Tournament, str], int | tuple[int, int]] = {}
-		for result in results:
-			player_matches_at_event = [
-				m for m in Match.matches_at_event(result.event) if player in m.players
-			]
-			if not player_matches_at_event:
-				# Player DQd out of the whole event and so didn't really attend it
-				continue
+			data: dict[tuple[Tournament, str], int | tuple[int, int]] = {}
+			for result in results:
+				player_matches_at_event = [
+					m for m in Match.matches_at_event(result.event) if player in m.players
+				]
+				if not player_matches_at_event:
+					# Player DQd out of the whole event and so didn't really attend it
+					continue
 
-			placing = (result.real_placing, result.total_entrants)
-			score = rounds_from_victory(result.total_entrants) - rounds_from_victory(placing[0])
+				placing = (result.real_placing, result.total_entrants)
+				score = rounds_from_victory(result.total_entrants) - rounds_from_victory(placing[0])
 
-			if score == 1 and not any(m.winner == player for m in player_matches_at_event):
-				# Player went 0-2, but ended up in losers round 2 due to seeding
-				# Not sure that should count
-				score = 0
-			elif score == 0 and any(m.winner == player for m in player_matches_at_event):
-				# Player went (probably) 1-2, winning WR1 and losing WR2 and due to seeding going to LR1 and losing there
-				# Kinda feel like that should be a point
-				score = 1
+				if score == 1 and not any(m.winner == player for m in player_matches_at_event):
+					# Player went 0-2, but ended up in losers round 2 due to seeding
+					# Not sure that should count
+					score = 0
+				elif score == 0 and any(m.winner == player for m in player_matches_at_event):
+					# Player went (probably) 1-2, winning WR1 and losing WR2 and due to seeding going to LR1 and losing there
+					# Kinda feel like that should be a point
+					score = 1
 
-			# Nobody would normally have a dict like this, but this is how we get pandas to make it into a MultiIndex
-			data[(result.tournament, 'Placing')] = placing
-			data[(result.tournament, 'Score')] = score
+				# Nobody would normally have a dict like this, but this is how we get pandas to make it into a MultiIndex
+				data[result.tournament, 'Placing'] = placing
+				data[result.tournament, 'Score'] = score
 
-		rows[player] = data
+			rows[player] = data
 	return rows
 
 
@@ -179,11 +188,12 @@ def _get_stats(
 	count_below_midpoint = scores[scores.lt(midpoint, axis='index')].count(axis='columns')
 	portion_below_midpoint = count_below_midpoint / count
 
-	if count.min() == 1:
-		# Whoopsie no stats involving sem for you
-		confidence_percent = 0
-		if sort_column in {'low', 'high'}:
-			sort_column = None
+	# TODO: ???? What was this supposed to do
+	# if count.min() == 1:
+	# 	# Whoopsie no stats involving sem for you
+	# 	confidence_percent = 0
+	# 	if sort_column in {'low', 'high'}:
+	# 		sort_column = None
 	if confidence_percent:
 		z = scipy.stats.norm.ppf(1 - (1 - confidence_percent) / 2)  # Should be ~= 1.9599 for 95%
 		interval_high = mean + (z * sem)
@@ -191,7 +201,7 @@ def _get_stats(
 		interval_low.loc[interval_low < 0] = 0
 
 	_first_item_getter = operator.itemgetter(0)
- 	wins = (placings.map(_first_item_getter, na_action='ignore') <= 1).sum(axis='columns')
+	wins = (placings.map(_first_item_getter, na_action='ignore') <= 1).sum(axis='columns')
 	top_3s = (placings.map(_first_item_getter, na_action='ignore') <= 3).sum(axis='columns')
 	top_8s = (placings.map(_first_item_getter, na_action='ignore') <= 8).sum(axis='columns')
 	last_places = (scores == 0).sum(axis='columns')
@@ -347,7 +357,8 @@ def get_scores_and_stats(
 		)
 	).convert_dtypes()
 	df.index.name = 'Player'
-	df.columns = df.columns.set_names('Tournament', level=0)
+	if not df.empty:
+		df.columns = df.columns.set_names('Tournament', level=0)
 
 	scores: pandas.DataFrame = df.loc[:, (slice(None), 'Score')].droplevel(1, axis='columns')
 	placings: pandas.DataFrame = df.loc[:, (slice(None), 'Placing')].droplevel(1, axis='columns')
@@ -367,21 +378,22 @@ def _abbrev_name(t: Tournament) -> str:
 
 
 def output_stats(
-	output_path: Path | None,
+	output_folder: Path | None,
 	active_players: Iterable[Player],
 	game: Game | str,
-	region: Region | None,
-	season_start: date | None,
-	season_end: date | None,
-	event_size_to_count: int,
-	excluded_series: Iterable[str],
-	minimum_events_to_count: int,
+	region: Region | None = None,
+	season_start: date | None = None,
+	season_end: date | None = None,
+	event_size_to_count: int = 1,
+	excluded_series: Iterable[str] | None = [],
+	minimum_events_to_count: int = 3,
+	output_prefix: str = 'Tournament result',
 	*,
-	drop_zero_score: bool,
-	output_dates: bool,
-	redemption: bool,
-	confidence_percent: float,
-	sort_column: str | None,
+	drop_zero_score: bool = False,
+	output_dates: bool = False,  # TODO: Forgot to implement that whoops!
+	redemption: bool = False,
+	confidence_percent: float = 0.95,
+	sort_column: str | None = None,
 ):
 	scores, placings, stats = get_scores_and_stats(
 		active_players,
@@ -389,7 +401,7 @@ def output_stats(
 		season_start,
 		season_end,
 		event_size_to_count,
-		excluded_series,
+		excluded_series or (),
 		minimum_events_to_count,
 		drop_zero_score=drop_zero_score,
 		redemption=redemption,
@@ -403,47 +415,45 @@ def output_stats(
 
 	logger.info(stats)
 	stats.to_csv(
-		output_path / f'Tournament result stats{suffix}.csv' if output_path else sys.stdout
+		output_folder / f'{output_prefix} stats{suffix}.csv' if output_folder else sys.stdout
 	)
-	if output_path:
+	if output_folder:
 		# Reindexing by stats.index is just to sort it
 		scores.reindex(index=stats.index).rename(columns=_abbrev_name).to_csv(
-			output_path / f'Tournament result scores{suffix}.csv'
+			output_folder / f'{output_prefix} scores{suffix}.csv'
 		)
 		placings.rename(columns=_abbrev_name).map(
 			_format_placing_tuple, na_action='ignore'
-		).reindex(index=stats.index).to_csv(output_path / f'Tournament result placings{suffix}.csv')
+		).reindex(index=stats.index).to_csv(output_folder / f'{output_prefix} placings{suffix}.csv')
 		tier_list: BaseTierList[Player] = TextBoxTierList.from_items(
 			stats['Mean score'], append_minmax_to_tier_titles=True, score_formatter='.4g'
 		)
 		tier_list.to_image(max_images_per_row=5, show_scores=True).save(
-			output_path / 'Tier lists' / f'Tournament results{suffix} tiered by mean.png'
+			output_folder / 'Tier lists' / f'{output_prefix}{suffix} tiered by mean.png'
 		)
 		if confidence_percent:
 			tier_list = TextBoxTierList.from_items(
 				stats[f'{confidence_percent:.0%} confidence interval low'],
-				8,
 				append_minmax_to_tier_titles=True,
 				score_formatter='.4g',
 			)
 			tier_list.to_image(max_images_per_row=5, show_scores=True).save(
-				output_path
+				output_folder
 				/ 'Tier lists'
-				/ f'Tournament results{suffix} tiered by confidence interval low.png'
+				/ f'{output_prefix}{suffix} tiered by confidence interval low.png'
 			)
 			tier_list = TextBoxTierList.from_items(
 				stats[f'{confidence_percent:.0%} confidence interval high'],
-				8,
 				append_minmax_to_tier_titles=True,
 				score_formatter='.4g',
 			)
 			tier_list.to_image(max_images_per_row=5, show_scores=True).save(
-				output_path
+				output_folder
 				/ 'Tier lists'
-				/ f'Tournament results{suffix} tiered by confidence interval high.png'
+				/ f'{output_prefix}{suffix} tiered by confidence interval high.png'
 			)
 
-	if output_path:
+	if output_folder:
 		# TODO: This should all be optional via arguments
 
 		# TODO: Do this for other regions too, or some kind of only_include_series option
@@ -468,11 +478,11 @@ def output_stats(
 				logger.info('Locals only:')
 				logger.info(locals_only_stats)
 				locals_only_stats.to_csv(
-					output_path / 'Tournament result ACT locals only stats.csv'
+					output_folder / 'Tournament result ACT locals only stats.csv'
 				)
 				locals_only_scores.rename(columns=_abbrev_name).reindex(
 					index=locals_only_stats.index
-				).to_csv(output_path / 'Tournament result ACT locals only scores.csv')
+				).to_csv(output_folder / 'Tournament result ACT locals only scores.csv')
 
 		majors_columns = scores.columns.map(lambda t: t.is_major)
 		majors_only_scores = scores.loc[:, majors_columns].copy()
@@ -489,14 +499,15 @@ def output_stats(
 			logger.info('Majors only:')
 			logger.info(majors_only_stats)
 			majors_only_stats.to_csv(
-				output_path / f'Tournament result stats{suffix} majors only.csv'
+				output_folder / f'{output_prefix} stats{suffix} majors only.csv'
 			)
 			majors_only_scores.rename(columns=_abbrev_name).reindex(
 				index=majors_only_stats.index
-			).to_csv(output_path / f'Tournament result scores{suffix} majors only.csv')
+			).to_csv(output_folder / f'{output_prefix} scores{suffix} majors only.csv')
 
 		minimum_for_regional = 3  # TODO This should probably be an argument too
 		regionals_columns = scores.apply(
+			#FIXME: This means that it will only count big tournaments as regionals if there is 3 regions out of active_players, and not out of everyone who attended, which is often wrong/nonsense when active_players is some specific subset of players
 			lambda column: (
 				column.groupby(lambda player: player.region, sort=False).count() > 0
 			).sum()
@@ -518,11 +529,11 @@ def output_stats(
 			logger.info('Regionals only:')
 			logger.info(regionals_only_stats)
 			regionals_only_stats.to_csv(
-				output_path / f'Tournament result stats{suffix} regionals only.csv'
+				output_folder / f'{output_prefix} stats{suffix} regionals only.csv'
 			)
 			regionals_only_scores.rename(columns=_abbrev_name).reindex(
 				index=regionals_only_stats.index
-			).to_csv(output_path / f'Tournament result scores{suffix} regionals only.csv')
+			).to_csv(output_folder / f'{output_prefix} scores{suffix} regionals only.csv')
 
 
 def main():
