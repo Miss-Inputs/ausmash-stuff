@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from itertools import starmap
-
 import ausmash
 import numpy
 import pandas
@@ -12,9 +10,7 @@ from tier_list import CharacterTierList, TieredItem
 
 def main() -> None:
 	# Exclude national rankings because they're borked right now, 500 error when attempting to access any ranks
-	rankings = [
-		r for r in ausmash.Ranking.all() if r.game.short_name == 'SSBU' and r.region
-	]
+	rankings = [r for r in ausmash.Ranking.all() if r.game.short_name == 'SSBU' and r.region]
 
 	char_ranks: dict[ausmash.Character, list[float]] = {}
 	act_char_ranks: dict[ausmash.Character, list[float]] = {}
@@ -53,13 +49,10 @@ def main() -> None:
 	spectral = pyplot.get_cmap('Spectral')
 
 	tl = CharacterTierList.from_items(
-		df['mean'],
-		title='Australia + NZ',
-		score_formatter='.4g',
-		scale_factor=3,
+		df['mean'], title='Australia + NZ', score_formatter='.4g', scale_factor=3
 	)
 	tl.to_image(spectral, show_scores=True, title_background='white').save(
-		'/media/Shared/Datasets/Smash/Tier lists/Character showcase positions.png'
+		'/home/megan/Pictures/Tier lists/SSBU tier lists/Character showcase positions.png'
 	)
 	print(tl.to_text())
 
@@ -74,34 +67,9 @@ def main() -> None:
 		scale_factor=3,
 	)
 	tl.to_image(spectral, show_scores=True, title_background='white').save(
-		'/media/Shared/Datasets/Smash/Tier lists/Character showcase positions ACT.png'
+		'/home/megan/Pictures/Tier lists/SSBU tier lists/Character showcase positions ACT.png'
 	)
 	print(tl.to_text())
-
-	tl = CharacterTierList(
-		starmap(
-			TieredItem,
-			zip(
-				sorted(df.index, key=lambda char: char.name),
-				numpy.linspace(1, 0, df.index.size),
-				strict=True,
-			),
-		),
-		append_minmax_to_tier_titles=False,
-		score_formatter='%',
-	)
-	tl.to_image(spectral).save(
-		'/media/Shared/Datasets/Smash/Tier lists/Characters tiered alphabetically.png'
-	)
-
-	tl = CharacterTierList(
-		[TieredItem(char, len(char.name)) for char in df.index],
-		title='Character name lengths',
-		score_formatter=',',
-	)
-	tl.to_image(spectral, show_scores=True).save(
-		'/media/Shared/Datasets/Smash/Tier lists/Characters tiered by name length.png'
-	)
 
 
 if __name__ == '__main__':

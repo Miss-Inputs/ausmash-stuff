@@ -21,10 +21,12 @@ logger = logging.getLogger(__file__)
 ssbu_chars = {combine_echo_fighters(char) for char in Character.characters_in_game('SSBU')}
 
 
-def character_usages(matches: Sequence[Match]) -> tuple[float, list[TieredItem[Character]]]:
+def character_usages(
+	matches: Sequence[Match], tqdm_desc='Character usages'
+) -> tuple[float, list[TieredItem[Character]]]:
 	usages: defaultdict[Character, int] = defaultdict(int)
 	matches_with_character_data = 0
-	for match in tqdm(matches):
+	for match in tqdm(matches, tqdm_desc):
 		chars_used = frozenset(
 			combine_echo_fighters(char) for char in match.winner_characters
 		) | frozenset(combine_echo_fighters(char) for char in match.loser_characters)
@@ -36,7 +38,7 @@ def character_usages(matches: Sequence[Match]) -> tuple[float, list[TieredItem[C
 
 	if matches[0].game.short_name == 'SSBU':
 		for char in ssbu_chars:
-			usages[char] #pylint: disable=pointless-statement #nuh uhhh nerd it's literally a defaultdict
+			usages[char]  # pylint: disable=pointless-statement #nuh uhhh nerd it's literally a defaultdict
 
 	return matches_with_character_data / len(matches), [
 		TieredItem(char, usage / len(matches)) for char, usage in usages.items()
@@ -59,28 +61,23 @@ colourmap = pyplot.get_cmap('Spectral')
 
 
 def output_tier_list(
-	region: Region | None,
-	matches: Sequence[Match],
-	image_path: Path,
-	*additional_title_lines: str,
+	region: Region | None, matches: Sequence[Match], image_path: Path, *additional_title_lines: str
 ):
-	ratio, usages = character_usages(matches)
+	ratio, usages = character_usages(matches, f'Character usage for {image_path.stem}')
 	match_dates = [m.date for m in matches]
 	earliest, latest = min(match_dates), max(match_dates)
-	title_lines = [
-		region.name if region else 'Australia + New Zealand',
-	]
+	title_lines = [region.name if region else 'Australia + New Zealand']
 	if additional_title_lines:
 		title_lines += additional_title_lines
 	title_lines += [
 		f'From {earliest} to {latest}',
 		f'{ratio:%} of {len(matches)} matches with character data',
 	]
+	if len([usage for usage in usages if usage.score > 0]) < 3:
+		logger.info('nope')
+		return
 	tier_list = CharacterTierList(
-		usages,
-		title='\n'.join(title_lines),
-		score_formatter='%',
-		scale_factor=3,
+		usages, title='\n'.join(title_lines), score_formatter='%', scale_factor=3
 	)
 	if tier_list.num_tiers == 2:
 		tier_list.tier_names = dict(enumerate(('Used', 'Less used')))
@@ -143,11 +140,7 @@ def main() -> None:
 		out_dir / 'SSBM characters by usage.png',
 	)
 	recent_matches = [m for m in ult_matches if months_between(date.today(), m.date) <= 3]
-	output_tier_list(
-		None,
-		recent_matches,
-		out_dir / 'Characters by usage in last 3 months.png',
-	)
+	output_tier_list(None, recent_matches, out_dir / 'Characters by usage in last 3 months.png')
 	output_tier_list(
 		None,
 		[m for m in recent_matches if _is_in_wr1_or_2(m)],
@@ -181,8 +174,12 @@ def main() -> None:
 		)
 
 		recent_matches = [m for m in matches if months_between(date.today(), m.date) <= 3]
-		if not recent_matches:
-			logger.info('wank dicks balls piss %s has no active matches', region.name)
+		if len(recent_matches) <= 3:
+			logger.info(
+				"wank dicks balls piss %s has only %d active matches, that won't do",
+				region.name,
+				len(recent_matches),
+			)
 			continue
 		output_tier_list(
 			region,
