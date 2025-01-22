@@ -1,0 +1,14 @@
+category_encoders~=2.6
+gensim~=4.3
+geopandas~=0.14
+networkx~=3.2
+nltk~=3.8
+scikit_learn~=1.4
+Shapely~=2.0
+tier-lister @ git+https://github.com/Miss-Inputs/tier-lister@main
+tqdm~=4.66
+aiofiles
+aiohttp
+aiohttp-client-cache
+aiosqlite
+tqdm
