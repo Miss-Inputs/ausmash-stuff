@@ -9,12 +9,16 @@ from tqdm.auto import tqdm
 from tier_list import CharacterTierList, TieredItem
 
 
-def main() -> None:
+def main(*, active_only: bool = False, pr_only: bool = False) -> None:
 	# Exclude national rankings because they're borked right now, 500 error when attempting to access any ranks
 	rankings = [
 		r
-		for r in tqdm(ausmash.Ranking.all(), unit='ranking')
-		if r.game.short_name == 'SSBU' and r.region
+		for r in tqdm(
+			ausmash.Ranking.all_active() if active_only else ausmash.Ranking.all(), unit='ranking'
+		)
+		if r.game.short_name == 'SSBU'
+		and r.region
+		and (not pr_only or not r.is_probably_player_showcase)
 	]
 
 	char_ranks: dict[ausmash.Character, list[float]] = {}
