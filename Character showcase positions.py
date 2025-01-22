@@ -4,18 +4,23 @@ import ausmash
 import numpy
 import pandas
 from matplotlib import pyplot
+from tqdm.auto import tqdm
 
 from tier_list import CharacterTierList, TieredItem
 
 
 def main() -> None:
 	# Exclude national rankings because they're borked right now, 500 error when attempting to access any ranks
-	rankings = [r for r in ausmash.Ranking.all() if r.game.short_name == 'SSBU' and r.region]
+	rankings = [
+		r
+		for r in tqdm(ausmash.Ranking.all(), unit='ranking')
+		if r.game.short_name == 'SSBU' and r.region
+	]
 
 	char_ranks: dict[ausmash.Character, list[float]] = {}
 	act_char_ranks: dict[ausmash.Character, list[float]] = {}
 
-	for ranking in rankings:
+	for ranking in tqdm(rankings, 'Getting ranking characters', unit='ranking'):
 		size = len(ranking.ranks) + 1
 		chars_in_ranking = set()
 		for rank in ranking.ranks:
@@ -41,7 +46,7 @@ def main() -> None:
 			numpy.mean(ranks),
 			numpy.max(ranks),
 		]
-		for char, ranks in char_ranks.items()
+		for char, ranks in tqdm(char_ranks.items(), unit='character')
 	]
 	df = pandas.DataFrame(rows, columns=['char', 'count', 'sum', 'mean', 'max'])
 	df.set_index('char', inplace=True)
@@ -51,10 +56,10 @@ def main() -> None:
 	tl = CharacterTierList.from_items(
 		df['mean'], title='Australia + NZ', score_formatter='.4g', scale_factor=3
 	)
+	print(tl.to_text())
 	tl.to_image(spectral, show_scores=True, title_background='white').save(
 		'/home/megan/Pictures/Tier lists/SSBU tier lists/Character showcase positions.png'
 	)
-	print(tl.to_text())
 
 	tl = CharacterTierList(
 		[
@@ -66,10 +71,10 @@ def main() -> None:
 		score_formatter='.4g',
 		scale_factor=3,
 	)
+	print(tl.to_text())
 	tl.to_image(spectral, show_scores=True, title_background='white').save(
 		'/home/megan/Pictures/Tier lists/SSBU tier lists/Character showcase positions ACT.png'
 	)
-	print(tl.to_text())
 
 
 if __name__ == '__main__':
